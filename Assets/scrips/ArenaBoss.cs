@@ -34,7 +34,7 @@ namespace BossTemplate
                 if (pattern % 3 == 1)
                     warning = arena.Flash(new Vector2(targetX, arena.GroundY + 2.25f), new Vector2(2.2f, 4.5f), new Color(1, .25f, .3f, .22f), warningTime);
                 if (pattern % 3 == 2)
-                    warning = arena.Flash(new Vector2(0, arena.GroundY + .7f), new Vector2(21, 1.4f), new Color(1, .65f, .2f, .22f), warningTime);
+                    warning = arena.Flash(new Vector2(arena.GroundBounds.center.x, arena.GroundY + .7f), new Vector2(arena.GroundBounds.size.x, 1.4f), new Color(1, .65f, .2f, .22f), warningTime);
                 yield return new WaitForSeconds(warningTime);
                 if (arena.Finished) { if (warning) warning.SetActive(false); break; }
                 body.color = baseColor;
@@ -56,12 +56,15 @@ namespace BossTemplate
                 else
                 {
                     float start = transform.position.x;
-                    float destination = start > 0 ? -8 : 8;
+                    float destination = start > arena.GroundBounds.center.x
+                        ? arena.GroundBounds.min.x + body.bounds.extents.x + 1
+                        : arena.GroundBounds.max.x - body.bounds.extents.x - 1;
                     float elapsed = 0;
-                    while (elapsed < .65f && !arena.Finished)
+                    float duration = Mathf.Max(.65f, Mathf.Abs(destination - start) / 25);
+                    while (elapsed < duration && !arena.Finished)
                     {
                         elapsed += Time.deltaTime;
-                        transform.position = new Vector2(Mathf.Lerp(start, destination, elapsed / .65f), arena.GroundY + body.bounds.extents.y);
+                        transform.position = new Vector2(Mathf.Lerp(start, destination, elapsed / duration), arena.GroundY + body.bounds.extents.y);
                         if (Mathf.Abs(arena.Player.transform.position.x - transform.position.x) < 1.5f && Mathf.Abs(arena.Player.transform.position.y - transform.position.y) < 2.1f) arena.Player.Health.Hit(20, .8f);
                         yield return null;
                     }

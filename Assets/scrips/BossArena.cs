@@ -7,11 +7,14 @@ namespace BossTemplate
         [SerializeField, InspectorName("바닥")] private ArenaPlatform ground;
         [SerializeField, InspectorName("착지 가능한 발판 목록 (바닥 포함)")] private ArenaPlatform[] platforms;
         public float GroundY => ground.Bounds.max.y;
+        public Bounds GroundBounds => ground.Bounds;
         [SerializeField, InspectorName("플레이어")] private SideViewPlayer player;
         [SerializeField, InspectorName("보스")] private ArenaBoss boss;
         [SerializeField, InspectorName("경기장 카메라")] private Camera arenaCamera;
         [SerializeField, InspectorName("탄환 목록")] private ArenaProjectile[] projectiles;
         [SerializeField, InspectorName("공격 표시 목록")] private ArenaEffect[] effects;
+        [SerializeField, InspectorName("섬광 메시")] private Mesh sparkMesh;
+        [SerializeField, InspectorName("점프 링 메시")] private Mesh jumpRingMesh;
         private Vector3 playerStart, bossStart;
         public SideViewPlayer Player => player;
         public ArenaBoss Boss => boss;
@@ -54,7 +57,6 @@ namespace BossTemplate
         }
         private void Update()
         {
-            arenaCamera.orthographicSize = Mathf.Max(6.6f, 11.8f / Mathf.Max(.1f, arenaCamera.aspect));
             if (Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame) ResetFight();
         }
         public GameObject Flash(Vector2 position, Vector2 size, Color color, float lifetime)
@@ -65,6 +67,32 @@ namespace BossTemplate
                 effect.Show(position, size, color, lifetime); return effect.gameObject;
             }
             return null;
+        }
+        private void Burst(Mesh mesh, Vector2 position, Vector2 size, Color color, float lifetime,
+            Vector2 velocity, float endScale, float angle = 0)
+        {
+            if (!mesh) return;
+            foreach (var effect in effects)
+            {
+                if (effect.gameObject.activeSelf) continue;
+                effect.ShowAnimated(mesh, position, size, color, lifetime, velocity, endScale, angle);
+                return;
+            }
+        }
+        public void GunFlash(Vector2 muzzle, int facing)
+        {
+            Burst(sparkMesh, muzzle + Vector2.right * facing * .14f, new Vector2(.65f, .35f),
+                new Color(1, .78f, .25f), .09f, Vector2.right * facing * 1.5f, .15f);
+            Burst(sparkMesh, muzzle - Vector2.right * facing * .3f, new Vector2(.12f, .07f),
+                new Color(1, .7f, .25f), .22f, new Vector2(-facing * 2, 1.4f), .25f, 35);
+        }
+        public void DoubleJumpFlash(Vector2 feet)
+        {
+            Burst(jumpRingMesh, feet, new Vector2(.8f, .25f), new Color(.4f, .85f, 1, .9f),
+                .3f, Vector2.down * .4f, 2.8f);
+            for (int i = -1; i <= 1; i++)
+                Burst(sparkMesh, feet + new Vector2(i * .2f, -.1f), new Vector2(.12f, .28f),
+                    new Color(.7f, .95f, 1), .25f, new Vector2(i * 2, -2), .1f, i * 25);
         }
         public void SpawnProjectile(Vector2 position, Vector2 velocity, float damage, bool hostile)
         {
@@ -80,3 +108,4 @@ namespace BossTemplate
         }
     }
 }
+

@@ -105,48 +105,6 @@ namespace BossTemplate
             return court.yMin + Mathf.PingPong(projectedY, court.height);
         }
 
-        internal void SeparateAirHockeyPuck(ArenaProjectile other, Rect court)
-        {
-            Vector2 first = transform.position;
-            Vector2 second = other.transform.position;
-            Vector2 offset = second - first;
-            Vector2 firstExtent = surface.bounds.extents;
-            Vector2 secondExtent = other.surface.bounds.extents;
-            Vector2 clearance = firstExtent + secondExtent + Vector2.one * .05f;
-            if (Mathf.Abs(offset.x) >= clearance.x || Mathf.Abs(offset.y) >= clearance.y) return;
-
-            Vector2 relativeVelocity = velocity - other.velocity;
-            Vector2 normal = offset.sqrMagnitude > .0001f ? offset.normalized : relativeVelocity.normalized;
-            if (normal == Vector2.zero) normal = Vector2.up;
-            float gap = Mathf.Min(clearance.x / Mathf.Max(.001f, Mathf.Abs(normal.x)),
-                clearance.y / Mathf.Max(.001f, Mathf.Abs(normal.y)));
-            if (Mathf.Abs(normal.x) * gap > court.width || Mathf.Abs(normal.y) * gap > court.height)
-                normal = court.width >= court.height ? Vector2.right : Vector2.up;
-            gap = Mathf.Min(gap, Mathf.Max(court.width, court.height));
-
-            Vector2 halfGap = normal * (gap * .5f);
-            Vector2 center = (first + second) * .5f;
-            float horizontal = Mathf.Abs(halfGap.x);
-            float vertical = Mathf.Abs(halfGap.y);
-            center.x = Mathf.Clamp(center.x, court.xMin + horizontal, court.xMax - horizontal);
-            center.y = Mathf.Clamp(center.y, court.yMin + vertical, court.yMax - vertical);
-            transform.position = center - halfGap;
-            other.transform.position = center + halfGap;
-
-            float approach = Vector2.Dot(relativeVelocity, normal);
-            if (approach <= 0) return;
-            ApplyHockeyDeflection(velocity - normal * approach);
-            other.ApplyHockeyDeflection(other.velocity + normal * approach);
-        }
-
-        private void ApplyHockeyDeflection(Vector2 direction)
-        {
-            // Keep a horizontal component so the puck can still reach a paddle.
-            if (Mathf.Abs(direction.x) < 3f)
-                direction.x = 3f * Mathf.Sign(direction.x == 0 ? velocity.x : direction.x);
-            velocity = direction.normalized * velocity.magnitude;
-        }
-
         internal void MarkHealingMine() => healingMine = true;
 
         internal void Strike(bool destroyedByPlayer)
@@ -154,7 +112,7 @@ namespace BossTemplate
             if (!gameObject.activeSelf || rockHits <= 0) return;
             if (--rockHits == 0)
             {
-                if (healingMine && destroyedByPlayer) arena.DropHealthOrb(transform.position);
+                if (healingMine && destroyedByPlayer) arena.DropHealthOrb(transform.position, surface.sharedMaterial);
                 arena.ShakeImpact(transform.position, Vector2.down * .09f);
                 arena.ShowRockBreak(transform.position, surface.bounds.size);
                 gameObject.SetActive(false);
@@ -184,7 +142,8 @@ namespace BossTemplate
                     float phase = Mathf.Repeat(elapsed * (.55f + .55f * progress), 1);
                     float rise = Mathf.SmoothStep(0, 1, phase / .10f);
                     float fade = 1 - Mathf.SmoothStep(0, 1, (phase - .65f) / .12f);
-                    normalColor = Color.Lerp(Color.black, Color.red, rise * fade);
+                    Color crackColor = healingMine ? new Color(.2f, 1, .3f) : Color.red;
+                    normalColor = Color.Lerp(Color.black, crackColor, rise * fade);
                 }
                 return;
             }
@@ -220,7 +179,8 @@ namespace BossTemplate
                 else
                 {
                     Vector2 impact = new Vector2(to.x, arena.GroundY + .25f);
-                    if (flight == RockFlight.Crashing || (flight != RockFlight.Mine && Random.value >= arena.RockPlantChance)
+                    bool mustPlant = flight == RockFlight.Mine || healingMine;
+                    if (flight == RockFlight.Crashing || (!mustPlant && Random.value >= arena.RockPlantChance)
                         || arena.Player.OverlapsPlantedRock(to.x))
                     {
                         arena.ShowRockBreak(impact, surface.bounds.size);
@@ -317,24 +277,18 @@ namespace BossTemplate
         {
             if (!isRock) return;
             bool flashing = Time.time < hitFlashUntil;
-            Color rockColor = normalColor;
-            if (healingMine)
-            {
-                float pulse = .5f + .5f * Mathf.Sin(Time.time * 9);
-                rockColor = Color.Lerp(new Color(.12f, .78f, .2f), new Color(.57f, 1, .48f), pulse);
-            }
             if (rockShell && rockShell.enabled)
             {
-                rockShell.color = flashing ? HitFlashColor : healingMine ? rockColor : Color.white;
-                surface.color = rockColor;
+                rockShell.color = flashing ? HitFlashColor : Color.white;
+                surface.color = normalColor;
             }
             else
             {
-                Color color = rockColor;
+                Color color = normalColor;
                 if (Time.time < launchAt)
                 {
                     float pulse = Mathf.PingPong((launchAt - Time.time) * 5f, 1f);
-                    color = Color.Lerp(rockColor, new Color(1, .58f, .25f), pulse * .7f);
+                    color = Color.Lerp(normalColor, new Color(1, .58f, .25f), pulse * .7f);
                 }
                 surface.color = flashing ? HitFlashColor : color;
             }
@@ -349,6 +303,7 @@ namespace BossTemplate
             if (hostile && isRock)
             {
                 Bounds rockBounds = surface.bounds;
+                if (flight == RockFlight.AirHockey) rockBounds.size *= .6f;
                 rockBounds.Expand((Vector3)(arena.Player.HurtboxHalfSize * 2));
                 targetTime = BoundsContactTime(rockBounds, targetPosition, targetPosition - (to - from));
             }

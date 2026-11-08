@@ -4,7 +4,7 @@ namespace BossTemplate
 {
     public sealed class ArenaHealthOrb : MonoBehaviour
     {
-        private const float HealAmount = 20;
+        private const float HealAmount = 10;
         private const float Lifetime = 12;
         private BossArena arena;
         private Sprite sprite;

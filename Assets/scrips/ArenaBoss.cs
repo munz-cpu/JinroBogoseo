@@ -29,6 +29,7 @@ namespace BossTemplate
         [SerializeField, InspectorName("주먹 내려찍기 착지")] private AudioClip fistSlamSound;
         private const float FramesPerSecond = 12;
         private const float FallingRockHoverHeight = 7.8f;
+        private const float HealingMineChance = .3f;
         private const float FistHeight = 4.2f;
         private bool pauseRain;
         internal bool Hidden { get; private set; }
@@ -188,9 +189,9 @@ namespace BossTemplate
 
         private Vector2 FistOrbitPosition(int index)
         {
-            const float sideOffset = 7.5f;
-            const float horizontalRadius = .8f;
-            const float verticalRadius = .7f;
+            const float sideOffset = 9f;
+            const float horizontalRadius = 1.6f;
+            const float verticalRadius = 1.2f;
             const float orbitPeriod = 5f;
             Bounds bounds = arena.GroundBounds;
             float clearance = sideOffset + horizontalRadius + fists[index].bounds.extents.x;
@@ -455,13 +456,17 @@ namespace BossTemplate
             const float speed = 8.5f;
             float center = Mathf.Clamp(PlayerPosition.x, arena.GroundBounds.min.x + 7, arena.GroundBounds.max.x - 7);
             int safeLane = DirectionToPlayer < 0 ? -1 : 1;
+            int healingLane = Random.Range(-2, 2);
+            if (healingLane >= safeLane) healingLane++;
+            bool hasHealingMine = Random.value < HealingMineChance;
             Warn("천장 붕괴 예고", rainWarningSound, new Vector2(0, .24f), -20, warningTime);
             for (int lane = -2; lane <= 2; lane++)
             {
                 if (lane == safeLane) continue;
                 float x = center + lane * spacing;
                 arena.SpawnRock(new Vector2(x, arena.GroundY + FallingRockHoverHeight),
-                    Vector2.down * speed, 14, RockFlight.Falling, holdTime: warningTime);
+                    Vector2.down * speed, 14, RockFlight.Falling, holdTime: warningTime,
+                    healingMine: hasHealingMine && lane == healingLane);
             }
             yield return new WaitForSeconds(warningTime);
             if (arena.Finished) yield break;
@@ -532,6 +537,7 @@ namespace BossTemplate
                 arena.SpawnRock((Vector2)transform.position + Vector2.up, Vector2.up * 25, 0, RockFlight.Launch);
             const int rockCount = 7;
             const float rockInterval = .25f;
+            int healingRock = Random.value < HealingMineChance ? Random.Range(0, rockCount) : -1;
             float left = ClampX(float.NegativeInfinity);
             float right = ClampX(float.PositiveInfinity);
             float spacing = Mathf.Min(4, (right - left) / rockCount);
@@ -547,7 +553,7 @@ namespace BossTemplate
                 float x = positions[selected];
                 positions[selected] = positions[i];
                 arena.SpawnRock(new Vector2(x, arena.GroundY + FallingRockHoverHeight),
-                    Vector2.down * fallSpeed, 14, RockFlight.Falling, holdTime: hoverTime);
+                    Vector2.down * fallSpeed, 14, RockFlight.Falling, holdTime: hoverTime, healingMine: i == healingRock);
                 if (i < rockCount - 1) yield return new WaitForSeconds(rockInterval);
             }
         }

@@ -159,14 +159,14 @@ namespace BossTemplate
             foreach (var item in effects) item.gameObject.SetActive(false);
         }
 
-        internal void DropHealthOrb(Vector2 position)
+        internal void DropHealthOrb(Vector2 position, Material material)
         {
             if (!healthOrb)
             {
                 var pickup = new GameObject("회복 구슬");
                 pickup.transform.SetParent(transform, true);
                 healthOrb = pickup.AddComponent<ArenaHealthOrb>();
-                healthOrb.Initialize(this, projectiles[0].GetComponent<SpriteRenderer>().sharedMaterial);
+                healthOrb.Initialize(this, material);
             }
             healthOrb.Drop(position);
         }
@@ -327,14 +327,16 @@ namespace BossTemplate
             => SpawnProjectile(position, velocity, damage, hostile, sprite, null, RockFlight.Straight) != null;
 
         internal ArenaProjectile SpawnRock(Vector2 position, Vector2 velocity, float damage,
-            RockFlight flight = RockFlight.Straight, float holdTime = 0)
+            RockFlight flight = RockFlight.Straight, float holdTime = 0, bool healingMine = false)
         {
             RockAppearance appearance = default;
             if (fallingRocks != null && fallingRocks.Length > 0)
                 appearance = fallingRocks[Random.Range(0, fallingRocks.Length)];
             Sprite shell = flight is RockFlight.Falling or RockFlight.Mine ? appearance.shell : null;
-            return SpawnProjectile(position, velocity, damage, true, appearance.solid ? appearance.solid : rockSprite,
+            ArenaProjectile rock = SpawnProjectile(position, velocity, damage, true, appearance.solid ? appearance.solid : rockSprite,
                 shell, flight, true, holdTime);
+            if (rock && healingMine) rock.MarkHealingMine();
+            return rock;
         }
 
         private ArenaProjectile SpawnProjectile(Vector2 position, Vector2 velocity, float damage, bool hostile,

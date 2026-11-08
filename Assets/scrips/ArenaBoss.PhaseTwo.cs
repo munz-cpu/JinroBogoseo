@@ -147,7 +147,6 @@ namespace BossTemplate
                         if (pucks[i] && !pucks[i].IsAirHockeyPuck) pucks[i] = null;
 
                     court = AirHockeyCourt;
-                    if (pucks[0] && pucks[1]) pucks[0].SeparateAirHockeyPuck(pucks[1], court);
                     if (HockeyHitstopActive)
                     {
                         yield return null;
@@ -163,7 +162,6 @@ namespace BossTemplate
                         {
                             second.LaunchAirHockey(endTime - Time.time, fistImpactSound, 1);
                             pucks[1] = second;
-                            if (pucks[0]) pucks[0].SeparateAirHockeyPuck(second, court);
                             secondServed = true;
                             Intent = "돌 에어하키 · 저글링";
                             secondsToServe = float.PositiveInfinity;
@@ -278,7 +276,7 @@ namespace BossTemplate
             const float halfWidth = (mineCount - 1) * spacing * .5f;
             Bounds bounds = arena.GroundBounds;
             float center = Mathf.Clamp(PlayerPosition.x, bounds.min.x + halfWidth + 1, bounds.max.x - halfWidth - 1);
-            int healingMine = Random.Range(0, mineCount);
+            int healingMine = Random.value < HealingMineChance ? Random.Range(0, mineCount) : -1;
             Intent = "돌 지뢰밭 예고";
             for (int i = 0; i < mineCount; i++)
             {
@@ -294,8 +292,7 @@ namespace BossTemplate
                 const float flightTime = 1f;
                 Vector2 velocity = (destination - origin) / flightTime;
                 velocity.y += ArenaProjectile.RockGravity * flightTime * .5f;
-                ArenaProjectile mine = arena.SpawnRock(origin, velocity, 15, RockFlight.Mine);
-                if (mine && i == healingMine) mine.MarkHealingMine();
+                arena.SpawnRock(origin, velocity, 15, RockFlight.Mine, healingMine: i == healingMine);
                 yield return new WaitForSeconds(.14f);
             }
         }

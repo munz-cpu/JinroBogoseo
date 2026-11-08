@@ -7654,6 +7654,7 @@ MonoBehaviour:
   useMagazine: 0
   magazineSize: 40
   reloadDuration: 0.9
+  healthRegenPerSecond: 2
   jumpSound: {fileID: 8300000, guid: f7459a57da389d848aa7f4d44561a886, type: 3}
   doubleJumpSound: {fileID: 8300000, guid: f7459a57da389d848aa7f4d44561a886, type: 3}
   landingSound: {fileID: 8300000, guid: 8b3c04d9a97c2f24ebc15134d63d5244, type: 3}

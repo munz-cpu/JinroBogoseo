@@ -18,7 +18,7 @@ namespace BossTemplate
         [SerializeField, Min(1), InspectorName("탄창 크기")] private int magazineSize = 40;
         [SerializeField, Min(.1f), InspectorName("재장전 시간")] private float reloadDuration = .9f;
         [Header("체력 재생")]
-        [SerializeField, Min(0), InspectorName("초당 체력 회복량")] private float healthRegenPerSecond = 4;
+        [SerializeField, Min(0), InspectorName("초당 체력 회복량")] private float healthRegenPerSecond = 2;
         [SerializeField, Min(0), InspectorName("피격 후 재생 대기 시간")] private float healthRegenDelay = 3;
         [Header("효과음")]
         [SerializeField, InspectorName("점프")] private AudioClip jumpSound;

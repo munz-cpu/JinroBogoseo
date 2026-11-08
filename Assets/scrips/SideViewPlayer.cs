@@ -62,6 +62,7 @@ namespace BossTemplate
 
         private void Update()
         {
+            body.color = Time.time < Health.InvulnerableUntil ? Color.white : baseColor;
             var k = Keyboard.current;
             if (arena.Finished || k == null)
             {
@@ -123,7 +124,6 @@ namespace BossTemplate
             if (ignoredPlatform && position.y - halfSize.y < ignoredPlatform.Bounds.max.y - .02f)
                 ignoredPlatform = null;
             transform.position = position;
-            body.color = Time.time < Health.InvulnerableUntil ? Color.white : baseColor;
             body.flipX = facing < 0;
         }
 

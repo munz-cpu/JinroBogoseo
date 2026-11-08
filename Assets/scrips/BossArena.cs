@@ -45,7 +45,8 @@ namespace BossTemplate
         private void Awake()
         {
             playerStart = player.transform.position; bossStart = boss.transform.position;
-            Player.Initialize(this); Boss.Initialize(this); ResetFight();
+            Player.Initialize(this); Boss.Initialize(this);
+            ResetFight();
         }
         public void ResetFight()
         {

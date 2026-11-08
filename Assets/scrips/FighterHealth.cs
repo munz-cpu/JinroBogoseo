@@ -7,6 +7,10 @@ namespace BossTemplate
         [SerializeField, InspectorName("최대 체력")] private float maximum = 100;
         [SerializeField] private Material hitFlashMaterial;
         [SerializeField] private SpriteRenderer[] hitRenderers;
+        [Header("효과음")]
+        [SerializeField, InspectorName("피격")] private AudioClip hitSound;
+        [SerializeField, InspectorName("쓰러짐")] private AudioClip defeatSound;
+        private BossArena arena;
         private const float HitFlashDuration = .10f;
         private float hitFlashUntil;
         private Material[] normalMaterials;
@@ -15,6 +19,7 @@ namespace BossTemplate
         public float Maximum => maximum;
         public bool Dead => Current <= 0;
         public float InvulnerableUntil { get; set; }
+        internal void InitializeAudio(BossArena owner) => arena = owner;
         private void Awake()
         {
             if (!hitFlashMaterial || hitRenderers == null || hitRenderers.Length == 0) return;
@@ -48,7 +53,11 @@ namespace BossTemplate
             bool lostHealth = remaining < Current;
             Current = remaining;
             InvulnerableUntil = Time.time + immunity;
-            if (lostHealth) hitFlashUntil = Time.time + HitFlashDuration;
+            if (lostHealth)
+            {
+                hitFlashUntil = Time.time + HitFlashDuration;
+                if (arena) arena.PlayEffect(Dead && defeatSound ? defeatSound : hitSound);
+            }
             return true;
         }
     }

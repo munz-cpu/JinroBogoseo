@@ -5,16 +5,22 @@ namespace BossTemplate
     public sealed class ArenaHud : MonoBehaviour
     {
         [SerializeField, InspectorName("보스전 경기장")] private BossArena arena;
-        [SerializeField, InspectorName("체력 및 보스 상태")] private Text status;
+        [SerializeField, InspectorName("탄창 표시")] private Text ammo;
         [SerializeField, InspectorName("플레이어 체력바")] private Slider playerHealth;
-        [SerializeField, InspectorName("보스 체력바")] private Slider bossHealth;
         [SerializeField, InspectorName("전투 결과")] private Text result;
+        private int displayedRounds = -1, displayedCapacity;
         private void Update()
         {
             UpdateHealthBar(playerHealth, arena.Player.Health);
-            UpdateHealthBar(bossHealth, arena.Boss.Health);
-            status.text = arena.Boss.Intent;
-            result.text = arena.Finished ? (arena.Boss.Health.Dead ? "승리! R 키로 재도전" : "패배! R 키로 재도전") : "";
+            int rounds = arena.Player.RoundsRemaining;
+            int capacity = arena.Player.MagazineSize;
+            if (ammo && (rounds != displayedRounds || capacity != displayedCapacity))
+            {
+                ammo.text = rounds == 0 ? "재장전 중" : $"탄약 {rounds} / {capacity}";
+                displayedRounds = rounds;
+                displayedCapacity = capacity;
+            }
+            result.text = arena.Finished ? (arena.Boss.Health.Dead ? "승리! Enter로 재도전" : "패배! Enter로 재도전") : "";
         }
 
         private static void UpdateHealthBar(Slider slider, FighterHealth health)

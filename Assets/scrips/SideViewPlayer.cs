@@ -9,19 +9,27 @@ namespace BossTemplate
         [SerializeField, InspectorName("이동 속도")] private float moveSpeed = 6;
         [SerializeField, InspectorName("점프 속도")] private float jumpSpeed = 12;
         [SerializeField, InspectorName("중력")] private float gravity = 30;
-        [Header("스킬 단축키")]
-        [SerializeField, InspectorName("근접 공격 키")] private Key attackKey = Key.Z;
-        [SerializeField, InspectorName("원거리 공격 키")] private Key shotKey = Key.X;
-        [SerializeField, InspectorName("탄막 키")] private Key burstKey = Key.C;
-        [Header("WASD 조작용 공격 키")]
-        [SerializeField, InspectorName("근접 공격 키 (WASD)")] private Key alternateAttackKey = Key.LeftShift;
-        [SerializeField, InspectorName("원거리 공격 키 (WASD)")] private Key alternateShotKey = Key.Enter;
-        [SerializeField, InspectorName("탄막 키 (WASD)")] private Key alternateBurstKey = Key.Backslash;
-        [Header("재사용 대기시간(초): 근접 공격 / 원거리 공격 / 탄막")]
-        [SerializeField, InspectorName("재사용 대기시간")] private float[] cooldowns = { .28f, .2f, 4 };
+        [SerializeField, Min(0), InspectorName("대시 속도")] private float dashSpeed = 20;
+        [SerializeField, Min(0), InspectorName("대시 지속 시간")] private float dashDuration = .16f;
+        [Header("재사용 대기시간(초): 대시 / 사격 / 궁극기")]
+        [SerializeField, InspectorName("재사용 대기시간")] private float[] cooldowns = { .65f, .1f, 4 };
+        [Header("재장전")]
+        [SerializeField, Min(1), InspectorName("탄창 크기")] private int magazineSize = 12;
+        [SerializeField, Min(.1f), InspectorName("재장전 시간")] private float reloadDuration = .9f;
+        [Header("효과음")]
+        [SerializeField, InspectorName("점프")] private AudioClip jumpSound;
+        [SerializeField, InspectorName("더블 점프")] private AudioClip doubleJumpSound;
+        [SerializeField, InspectorName("착지")] private AudioClip landingSound;
+        [SerializeField, InspectorName("발판 내려가기")] private AudioClip dropThroughSound;
+        [SerializeField, InspectorName("대시")] private AudioClip dashSound;
+        [SerializeField, InspectorName("원거리 사격")] private AudioClip shotSound;
+        [SerializeField, InspectorName("재장전")] private AudioClip reloadSound;
+        [SerializeField, InspectorName("궁극기")] private AudioClip burstSound;
         private readonly float[] ready = new float[3];
         private BossArena arena;
         private float vertical;
+        private float dashRemaining;
+        private float reloadUntil;
         private int facing = 1, jumps;
         private int lastMuzzleFrame = -1;
         private SpriteRenderer body;
@@ -34,7 +42,16 @@ namespace BossTemplate
         private bool grounded;
         private ArenaPlatform standingPlatform, ignoredPlatform;
         public FighterHealth Health { get; private set; }
+        public int MagazineSize => Mathf.Max(1, magazineSize);
+        public int RoundsRemaining { get; private set; }
         public float Cooldown(int index) => Mathf.Max(0, ready[index] - Time.time);
+
+        internal bool OverlapsPlantedRock(float rockX)
+        {
+            Vector3 position = transform.position;
+            return position.y - halfSize.y < arena.GroundY + ArenaProjectile.PlantedHeight
+                && Mathf.Abs(position.x - rockX) < halfSize.x + ArenaProjectile.PlantedHalfWidth;
+        }
 
         public void Initialize(BossArena owner)
         {
@@ -50,6 +67,9 @@ namespace BossTemplate
         public void ResetState()
         {
             vertical = 0; facing = 1; jumps = 0;
+            dashRemaining = 0;
+            RoundsRemaining = MagazineSize;
+            reloadUntil = 0;
             lastMuzzleFrame = -1;
             crouching = false; halfSize = standingHalfSize;
             grounded = true;
@@ -72,23 +92,38 @@ namespace BossTemplate
             float axis = (k.dKey.isPressed || k.rightArrowKey.isPressed ? 1 : 0) - (k.aKey.isPressed || k.leftArrowKey.isPressed ? 1 : 0);
             bool down = k.sKey.isPressed || k.downArrowKey.isPressed;
             bool jump = k.wKey.wasPressedThisFrame || k.upArrowKey.wasPressedThisFrame || k.spaceKey.wasPressedThisFrame;
-            Move(axis, jump, down, Time.deltaTime);
-            if (visuals) visuals.SetState(axis, grounded, vertical, facing, false);
-            if ((k[attackKey].isPressed || k[alternateAttackKey].isPressed) && Use(0))
+            if (dashRemaining <= 0 && (k.leftShiftKey.wasPressedThisFrame || k.rightShiftKey.wasPressedThisFrame) && Use(0))
             {
-                Vector2 center = (Vector2)transform.position + Vector2.right * facing * 1.2f;
-                arena.Flash(center, new Vector2(2.4f, 1.6f), new Color(.5f, 1, 1, .65f), .1f);
-                if (Mathf.Abs(arena.Boss.transform.position.x - center.x) < 2.1f && Mathf.Abs(arena.Boss.transform.position.y - center.y) < 2) arena.Boss.Health.Hit(12);
+                if (axis != 0) facing = axis > 0 ? 1 : -1;
+                dashRemaining = dashDuration;
+                arena.PlayEffect(dashSound);
             }
+            bool dashing = dashRemaining > 0;
+            Move(axis, jump, down && !dashing, Time.deltaTime);
+            if (visuals) visuals.SetState(dashing ? facing : axis, grounded, vertical, facing, false);
+            if (RoundsRemaining == 0 && Time.time >= reloadUntil) RoundsRemaining = MagazineSize;
             bool mouseShot = Mouse.current != null && Mouse.current.leftButton.isPressed;
-            if ((k[shotKey].isPressed || k[alternateShotKey].isPressed || mouseShot) && Use(1)) Shoot(new Vector2(facing * 15, 0), 7);
-            if ((k[burstKey].wasPressedThisFrame || k[alternateBurstKey].wasPressedThisFrame) && Use(2))
+            if ((k.enterKey.isPressed || mouseShot) && RoundsRemaining > 0 && Use(1)
+                && Shoot(new Vector2(facing * 15, 0), 7))
+            {
+                arena.PlayEffect(shotSound);
+                RoundsRemaining--;
+                if (RoundsRemaining == 0)
+                {
+                    reloadUntil = Time.time + Mathf.Max(.1f, reloadDuration);
+                    arena.PlayEffect(reloadSound);
+                }
+            }
+            if (k.backslashKey.wasPressedThisFrame && Use(2))
+            {
+                arena.PlayEffect(burstSound);
                 for (int i = -2; i <= 2; i++) Shoot(new Vector2(facing * 12, i * 2), 15);
+            }
         }
 
         private void Move(float axis, bool jump, bool down, float deltaTime)
         {
-            if (axis != 0) facing = axis > 0 ? 1 : -1;
+            if (dashRemaining <= 0 && axis != 0) facing = axis > 0 ? 1 : -1;
             bool nextCrouch = down && grounded && !jump;
             if (nextCrouch != crouching)
             {
@@ -104,21 +139,32 @@ namespace BossTemplate
                 ignoredPlatform = standingPlatform;
                 standingPlatform = null; grounded = false;
                 vertical = -2; jumps = 1;
+                arena.PlayEffect(dropThroughSound);
             }
             else if (jump && jumps < 2)
             {
                 vertical = jumpSpeed; jumps++;
+                arena.PlayEffect(jumps == 2 ? doubleJumpSound : jumpSound);
                 if (jumps == 2) arena.DoubleJumpFlash((Vector2)transform.position - Vector2.up * halfSize.y);
             }
             if (down && !grounded) vertical -= gravity * deltaTime;
             Vector3 previous = transform.position;
             Vector3 position = previous;
-            position.x += axis * moveSpeed * deltaTime;
+            float dashStep = Mathf.Min(dashRemaining, deltaTime);
+            position.x += facing * dashSpeed * dashStep + axis * moveSpeed * (deltaTime - dashStep);
+            dashRemaining -= dashStep;
             vertical -= gravity * deltaTime;
             position.y += vertical * deltaTime;
             position.x = Mathf.Clamp(position.x, arena.GroundBounds.min.x + halfSize.x, arena.GroundBounds.max.x - halfSize.x);
+            float unblockedX = position.x;
+            position.x = arena.BlockPlantedRockSides(previous, unblockedX, halfSize);
+            if (position.x != unblockedX) dashRemaining = 0;
             bool landed = arena.TryLand(previous, position, halfSize, out float landingY, out standingPlatform, ignoredPlatform);
-            if (landed) { position.y = landingY; vertical = 0; jumps = 0; }
+            if (landed)
+            {
+                if (!grounded) arena.PlayEffect(landingSound);
+                position.y = landingY; vertical = 0; jumps = 0;
+            }
             else if (grounded && vertical <= 0) jumps = Mathf.Max(jumps, 1);
             grounded = landed;
             if (ignoredPlatform && position.y - halfSize.y < ignoredPlatform.Bounds.max.y - .02f)
@@ -128,16 +174,18 @@ namespace BossTemplate
         }
 
         private bool Use(int i) { if (Time.time < ready[i]) return false; ready[i] = Time.time + cooldowns[i]; return true; }
-        private void Shoot(Vector2 velocity, float damage)
+        private bool Shoot(Vector2 velocity, float damage)
         {
-            if (visuals) visuals.Fire();
             Vector2 muzzle = visuals ? new Vector2(facing * 1.1f, crouching ? .32f : .62f) : Vector2.right * facing * .7f;
+            Vector2 origin = (Vector2)transform.position + muzzle;
+            if (!arena.SpawnProjectile(origin, velocity, damage, false)) return false;
+            if (visuals) visuals.Fire();
             if (lastMuzzleFrame != Time.frameCount)
             {
-                arena.GunFlash((Vector2)transform.position + muzzle, facing);
+                arena.GunFlash(origin, facing);
                 lastMuzzleFrame = Time.frameCount;
             }
-            arena.SpawnProjectile((Vector2)transform.position + muzzle, velocity, damage, false);
+            return true;
         }
     }
 }

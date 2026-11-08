@@ -410,7 +410,7 @@ Transform:
   - {fileID: 633399261}
   - {fileID: 263452050}
   - {fileID: 1565107227}
-  m_Father: {fileID: 1728527094}
+  m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &87745106
 GameObject:
@@ -1515,6 +1515,19 @@ MonoBehaviour:
   - {fileID: -1614782432086221076, guid: 0ca66135d62acdf4eb2328653acebe12, type: 3}
   - {fileID: -7347435121383349691, guid: 0ca66135d62acdf4eb2328653acebe12, type: 3}
   - {fileID: 4941684481991326430, guid: 0ca66135d62acdf4eb2328653acebe12, type: 3}
+  spreadWarningSound: {fileID: 0}
+  spreadSound: {fileID: 0}
+  slamWarningSound: {fileID: 0}
+  slamSound: {fileID: 0}
+  dashWarningSound: {fileID: 0}
+  dashSound: {fileID: 0}
+  punchWarningSound: {fileID: 0}
+  punchSound: {fileID: 0}
+  rainWarningSound: {fileID: 0}
+  rainLaunchSound: {fileID: 0}
+  skipWarningSound: {fileID: 0}
+  skipSound: {fileID: 0}
+  vanishSound: {fileID: 0}
 --- !u!114 &286678483
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1531,6 +1544,8 @@ MonoBehaviour:
   hitFlashMaterial: {fileID: 2100000, guid: 2ebc811ecfcb487383060dbc9ea4b721, type: 2}
   hitRenderers:
   - {fileID: 700000000000000202}
+  hitSound: {fileID: 0}
+  defeatSound: {fileID: 0}
 --- !u!212 &286678484
 SpriteRenderer:
   serializedVersion: 3
@@ -1605,7 +1620,7 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 700000000000000201}
-  m_Father: {fileID: 1728527094}
+  m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &308607670
 GameObject:
@@ -4972,7 +4987,7 @@ RectTransform:
   - {fileID: 2119533002}
   - {fileID: 1011555781}
   - {fileID: 1682802466}
-  m_Father: {fileID: 1728527094}
+  m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
@@ -5249,7 +5264,7 @@ GameObject:
   - component: {fileID: 773248915}
   - component: {fileID: 773248916}
   m_Layer: 0
-  m_Name: "\uCCB4\uB825 \uBC0F \uBCF4\uC2A4 \uC0C1\uD0DC"
+  m_Name: "\uD0C4\uCC3D \uD45C\uC2DC"
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -5269,11 +5284,11 @@ RectTransform:
   m_Children: []
   m_Father: {fileID: 743566131}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 1}
-  m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 0, y: -80}
-  m_SizeDelta: {x: -40, y: 70}
-  m_Pivot: {x: 0.5, y: 1}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 0, y: 0}
+  m_AnchoredPosition: {x: 336, y: 28}
+  m_SizeDelta: {x: 220, y: 30}
+  m_Pivot: {x: 0, y: 0.5}
 --- !u!222 &773248915
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -5304,18 +5319,18 @@ MonoBehaviour:
       m_Calls: []
   m_FontData:
     m_Font: {fileID: 12800000, guid: 191fee009f2398e4fb2d0b4d534d0f69, type: 3}
-    m_FontSize: 22
+    m_FontSize: 18
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
     m_MaxSize: 40
-    m_Alignment: 0
+    m_Alignment: 3
     m_AlignByGeometry: 0
     m_RichText: 1
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "\uC804\uD22C \uC900\uBE44"
+  m_Text: "\uD0C4\uC57D 12 / 12"
 --- !u!1 &790745533
 GameObject:
   m_ObjectHideFlags: 0
@@ -6701,9 +6716,9 @@ RectTransform:
   - {fileID: 499847871}
   m_Father: {fileID: 743566131}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 1}
-  m_AnchorMax: {x: 0, y: 1}
-  m_AnchoredPosition: {x: 170, y: -55}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 0, y: 0}
+  m_AnchoredPosition: {x: 170, y: 28}
   m_SizeDelta: {x: 300, y: 20}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1011555782
@@ -7630,16 +7645,22 @@ MonoBehaviour:
   moveSpeed: 6
   jumpSpeed: 12
   gravity: 30
-  attackKey: 40
-  shotKey: 38
-  burstKey: 17
-  alternateAttackKey: 51
-  alternateShotKey: 2
-  alternateBurstKey: 10
+  dashSpeed: 20
+  dashDuration: 0.16
   cooldowns:
-  - 0.28
-  - 0.2
+  - 0.65
+  - 0.1
   - 4
+  magazineSize: 12
+  reloadDuration: 0.9
+  jumpSound: {fileID: 8300000, guid: f7459a57da389d848aa7f4d44561a886, type: 3}
+  doubleJumpSound: {fileID: 8300000, guid: f7459a57da389d848aa7f4d44561a886, type: 3}
+  landingSound: {fileID: 0}
+  dropThroughSound: {fileID: 0}
+  dashSound: {fileID: 8300000, guid: 0187e5813875b614083a84a774facd1e, type: 3}
+  shotSound: {fileID: 8300000, guid: 21117c2c58ed8144986fd66ab25e0d2c, type: 3}
+  reloadSound: {fileID: 0}
+  burstSound: {fileID: 0}
   collisionHalfSize: {x: 0.45, y: 0.9}
 --- !u!114 &1149462640
 MonoBehaviour:
@@ -7659,6 +7680,8 @@ MonoBehaviour:
   - {fileID: 1149462641}
   - {fileID: 852482774}
   - {fileID: 35347868}
+  hitSound: {fileID: 0}
+  defeatSound: {fileID: 0}
 --- !u!212 &1149462641
 SpriteRenderer:
   serializedVersion: 3
@@ -7734,7 +7757,7 @@ Transform:
   m_Children:
   - {fileID: 852482773}
   - {fileID: 35347867}
-  m_Father: {fileID: 1728527094}
+  m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &1149462643
 MonoBehaviour:
@@ -7952,7 +7975,7 @@ Transform:
   - {fileID: 1981530609}
   - {fileID: 1848191484}
   - {fileID: 2128088265}
-  m_Father: {fileID: 1728527094}
+  m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1279969285
 GameObject:
@@ -8648,7 +8671,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: "Z / Shift: \uADFC\uC811 \uACF5\uACA9   X / Enter: \uC6D0\uAC70\uB9AC \uACF5\uACA9   C / \uC5ED\uC2AC\uB798\uC2DC: \uD0C4\uB9C9\n\uBC29\uD5A5\uD0A4 + Z/X/C \uB610\uB294 WASD + Shift/Enter/\uC5ED\uC2AC\uB798\uC2DC | \uC704: \uC810\uD504 \xB7 \uC544\uB798: \uBE60\uB978 \uB099\uD558 \xB7 R: \uC7AC\uB3C4\uC804"
+  m_Text: "Enter / \uC67C\uCABD \uD074\uB9AD: \uC0AC\uACA9   Shift: \uB300\uC2DC   \uC5ED\uC2AC\uB798\uC2DC: \uAD81\uADF9\uAE30\nA/D \uB610\uB294 \u2190/\u2192: \uC774\uB3D9   W/\u2191/Space: \uC810\uD504   S/\u2193: \uC6C5\uD06C\uB9AC\uAE30\uBA05be60\uB978 \uB099\uD558"
 --- !u!1 &1400153591
 GameObject:
   m_ObjectHideFlags: 0
@@ -10322,7 +10345,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &1682802466
 RectTransform:
   m_ObjectHideFlags: 0
@@ -10572,7 +10595,7 @@ Transform:
   m_Children:
   - {fileID: 700000000000000110}
   - {fileID: 700000000000000113}
-  m_Father: {fileID: 1728527094}
+  m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!212 &1703867772
 SpriteRenderer:
@@ -10763,7 +10786,7 @@ GameObject:
   - component: {fileID: 1728527093}
   - component: {fileID: 1728527092}
   m_Layer: 0
-  m_Name: "\uBCF4\uC2A4\uC804 \uD15C\uD50C\uB9BF"
+  m_Name: "\uBCF4\uC2A4\uC804"
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -10782,9 +10805,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BossTemplate.ArenaHud
   arena: {fileID: 1728527093}
-  status: {fileID: 773248916}
+  ammo: {fileID: 773248916}
   playerHealth: {fileID: 1011555784}
-  bossHealth: {fileID: 1682802469}
   result: {fileID: 2119533000}
 --- !u!114 &1728527093
 MonoBehaviour:
@@ -10891,6 +10913,24 @@ MonoBehaviour:
   - {fileID: 2128088263}
   sparkMesh: {fileID: 4300000, guid: 5c9053f7b0b44ff4ba2dc28a95364455, type: 2}
   jumpRingMesh: {fileID: 4300000, guid: 1a53f3a9d3e61b4469a584b93deb25f3, type: 2}
+  rockSprite: {fileID: 21300790, guid: 82a562abac3987a4b8a32a0f2c1de913, type: 3}
+  fallingRocks:
+  - solid: {fileID: -2705597995764985619, guid: a2525aa69632caa46933b61e9e09c283, type: 3}
+    shell: {fileID: -8967578419847941866, guid: d5e54b8d628a0004b805a885aee13931, type: 3}
+  - solid: {fileID: 8032301891362702160, guid: a2525aa69632caa46933b61e9e09c283, type: 3}
+    shell: {fileID: -6084610705467175477, guid: d5e54b8d628a0004b805a885aee13931, type: 3}
+  - solid: {fileID: -1916236507332333500, guid: a2525aa69632caa46933b61e9e09c283, type: 3}
+    shell: {fileID: -3715428552062892669, guid: d5e54b8d628a0004b805a885aee13931, type: 3}
+  - solid: {fileID: -3327394054111465296, guid: a2525aa69632caa46933b61e9e09c283, type: 3}
+    shell: {fileID: -3895712720298455987, guid: d5e54b8d628a0004b805a885aee13931, type: 3}
+  - solid: {fileID: -4801779533427383079, guid: a2525aa69632caa46933b61e9e09c283, type: 3}
+    shell: {fileID: 3467183985828429146, guid: d5e54b8d628a0004b805a885aee13931, type: 3}
+  - solid: {fileID: 7298283456765205186, guid: a2525aa69632caa46933b61e9e09c283, type: 3}
+    shell: {fileID: 796599164433615104, guid: d5e54b8d628a0004b805a885aee13931, type: 3}
+  rockPlantChance: 0.45
+  rockFuse: 4
+  rockExplosionSound: {fileID: 0}
+  shakeStrength: 1
 --- !u!4 &1728527094
 Transform:
   m_ObjectHideFlags: 0
@@ -10903,14 +10943,7 @@ Transform:
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
-  m_Children:
-  - {fileID: 1149462642}
-  - {fileID: 286678485}
-  - {fileID: 1703867771}
-  - {fileID: 51321613}
-  - {fileID: 1253621689}
-  - {fileID: 743566131}
-  - {fileID: 1914672321}
+  m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1755264980
@@ -11967,7 +12000,7 @@ Transform:
   - {fileID: 1116722122}
   - {fileID: 1472652527}
   - {fileID: 235279100}
-  m_Father: {fileID: 1728527094}
+  m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1922641228
 GameObject:
@@ -13732,6 +13765,13 @@ SceneRoots:
   - {fileID: 519420032}
   - {fileID: 619394802}
   - {fileID: 1728527094}
+  - {fileID: 1149462642}
+  - {fileID: 286678485}
+  - {fileID: 1703867771}
+  - {fileID: 51321613}
+  - {fileID: 1253621689}
+  - {fileID: 743566131}
+  - {fileID: 1914672321}
   - {fileID: 758210313}
   - {fileID: 764826421}
   - {fileID: 700000000000000011}

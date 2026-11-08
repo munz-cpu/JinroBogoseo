@@ -1,9 +1,17 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using Unity.Cinemachine;
 namespace BossTemplate
 {
     public sealed class BossArena : MonoBehaviour
     {
+        [System.Serializable]
+        private struct RockAppearance
+        {
+            public Sprite solid;
+            public Sprite shell;
+        }
+
         [SerializeField, InspectorName("바닥")] private ArenaPlatform ground;
         [SerializeField, InspectorName("착지 가능한 발판 목록 (바닥 포함)")] private ArenaPlatform[] platforms;
         public float GroundY => ground.Bounds.max.y;
@@ -15,10 +23,28 @@ namespace BossTemplate
         [SerializeField, InspectorName("공격 표시 목록")] private ArenaEffect[] effects;
         [SerializeField, InspectorName("섬광 메시")] private Mesh sparkMesh;
         [SerializeField, InspectorName("점프 링 메시")] private Mesh jumpRingMesh;
+        [Header("낙석")]
+        [SerializeField, InspectorName("돌 스프라이트")] private Sprite rockSprite;
+        [SerializeField, InspectorName("낙석 외형 세트")] private RockAppearance[] fallingRocks;
+        [SerializeField, Range(0, 1), InspectorName("바닥에 박힐 확률")] private float rockPlantChance = .45f;
+        [SerializeField, Min(.1f), InspectorName("폭발까지 걸리는 시간")] private float rockFuse = 4;
+        [SerializeField, InspectorName("돌 폭발")] private AudioClip rockExplosionSound;
+        [SerializeField, Range(0, 2), InspectorName("충돌 화면 흔들림")] private float shakeStrength = 1;
         private Vector3 playerStart, bossStart;
+        private AudioSource effectsAudio;
+        private CinemachineBrain cameraBrain;
+        private CinemachineVirtualCameraBase shakeCamera;
+        private readonly CinemachineImpulseDefinition impactImpulse = new CinemachineImpulseDefinition
+        {
+            ImpulseType = CinemachineImpulseDefinition.ImpulseTypes.Uniform,
+            ImpulseShape = CinemachineImpulseDefinition.ImpulseShapes.Bump,
+            ImpulseDuration = .18f
+        };
         public SideViewPlayer Player => player;
         public ArenaBoss Boss => boss;
         public bool Finished => Player.Health.Dead || Boss.Health.Dead;
+        internal float RockPlantChance => rockPlantChance;
+        internal float RockFuse => Mathf.Max(.1f, rockFuse);
 
         public bool TryLand(Vector2 previous, Vector2 next, Vector2 halfSize, out float centerY)
         {
@@ -26,6 +52,24 @@ namespace BossTemplate
         }
 
         public bool CanDropThrough(ArenaPlatform platform) => platform && platform != ground;
+
+        internal float BlockPlantedRockSides(Vector2 previous, float nextX, Vector2 halfSize)
+        {
+            if (nextX == previous.x || previous.y - halfSize.y >= GroundY + ArenaProjectile.PlantedHeight - .001f)
+                return nextX;
+
+            float clearance = halfSize.x + ArenaProjectile.PlantedHalfWidth;
+            foreach (var item in projectiles)
+            {
+                if (!item.Planted) continue;
+                float rockX = item.transform.position.x;
+                float left = rockX - clearance;
+                float right = rockX + clearance;
+                if (previous.x <= left + .001f && nextX > left) nextX = Mathf.Max(previous.x, left);
+                else if (previous.x >= right - .001f && nextX < right) nextX = Mathf.Min(previous.x, right);
+            }
+            return nextX;
+        }
 
         public bool TryLand(Vector2 previous, Vector2 next, Vector2 halfSize, out float centerY,
             out ArenaPlatform landedOn, ArenaPlatform ignored = null)
@@ -40,25 +84,78 @@ namespace BossTemplate
                 if (height > centerY) { centerY = height; landedOn = platform; }
                 landed = true;
             }
+
+            float rockTop = GroundY + ArenaProjectile.PlantedHeight;
+            if (next.y < previous.y && previous.y - halfSize.y >= rockTop - .01f
+                && next.y - halfSize.y <= rockTop && rockTop + halfSize.y > centerY)
+            {
+                float clearance = halfSize.x + ArenaProjectile.PlantedHalfWidth;
+                foreach (var item in projectiles)
+                {
+                    if (!item.Planted || Mathf.Abs(next.x - item.transform.position.x) >= clearance - .001f) continue;
+                    centerY = rockTop + halfSize.y;
+                    landedOn = null;
+                    return true;
+                }
+            }
             return landed;
         }
         private void Awake()
         {
+            if (arenaCamera) cameraBrain = arenaCamera.GetComponent<CinemachineBrain>();
             playerStart = player.transform.position; bossStart = boss.transform.position;
             Player.Initialize(this); Boss.Initialize(this);
+            Player.Health.InitializeAudio(this);
+            Boss.Health.InitializeAudio(this);
             ResetFight();
+        }
+
+        internal void ShakeImpact(Vector2 position, Vector2 impulse)
+        {
+            if (shakeStrength <= 0 || !cameraBrain
+                || !(cameraBrain.ActiveVirtualCamera is CinemachineVirtualCameraBase activeCamera)) return;
+
+            Vector3 viewport = arenaCamera.WorldToViewportPoint(position);
+            if (viewport.x < -.05f || viewport.x > 1.05f || viewport.y < -.05f || viewport.y > 1.05f) return;
+            if (shakeCamera != activeCamera)
+            {
+                if (!activeCamera.TryGetComponent(out CinemachineImpulseListener listener))
+                {
+                    listener = activeCamera.gameObject.AddComponent<CinemachineImpulseListener>();
+                    listener.ChannelMask = impactImpulse.ImpulseChannel;
+                    listener.Gain = 1;
+                    listener.ApplyAfter = CinemachineCore.Stage.Noise;
+                    listener.SignalCombinationMode = CinemachineImpulseListener.SignalCombinationModes.UseLargest;
+                    listener.ReactionSettings = default;
+                }
+                shakeCamera = activeCamera;
+            }
+            impactImpulse.CreateEvent(position, impulse * shakeStrength);
         }
         public void ResetFight()
         {
+            if (effectsAudio) effectsAudio.Stop();
             foreach (var item in projectiles) item.gameObject.SetActive(false);
             foreach (var item in effects) item.gameObject.SetActive(false);
             Player.transform.position = playerStart; Boss.transform.position = bossStart;
             Player.Health.ResetHealth(Player.Health.Maximum); Boss.Health.ResetHealth(Boss.Health.Maximum);
             Player.ResetState(); Boss.ResetState();
         }
+
+        internal void PlayEffect(AudioClip clip)
+        {
+            if (!clip) return;
+            if (!effectsAudio)
+            {
+                effectsAudio = gameObject.AddComponent<AudioSource>();
+                effectsAudio.playOnAwake = false;
+                effectsAudio.spatialBlend = 0;
+            }
+            effectsAudio.PlayOneShot(clip);
+        }
         private void Update()
         {
-            if (Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame) ResetFight();
+            if (Finished && Keyboard.current != null && Keyboard.current.enterKey.wasPressedThisFrame) ResetFight();
         }
         public GameObject Flash(Vector2 position, Vector2 size, Color color, float lifetime)
         {
@@ -95,17 +192,63 @@ namespace BossTemplate
                 Burst(sparkMesh, feet + new Vector2(i * .2f, -.1f), new Vector2(.12f, .28f),
                     new Color(.7f, .95f, 1), .25f, new Vector2(i * 2, -2), .1f, i * 25);
         }
-        public void SpawnProjectile(Vector2 position, Vector2 velocity, float damage, bool hostile)
+        public bool SpawnProjectile(Vector2 position, Vector2 velocity, float damage, bool hostile)
+            => SpawnProjectile(position, velocity, damage, hostile, null, null, RockFlight.Straight);
+
+        internal void SpawnRock(Vector2 position, Vector2 velocity, float damage, RockFlight flight = RockFlight.Straight)
+        {
+            RockAppearance appearance = default;
+            if (flight == RockFlight.Falling && fallingRocks != null && fallingRocks.Length > 0)
+                appearance = fallingRocks[Random.Range(0, fallingRocks.Length)];
+            SpawnProjectile(position, velocity, damage, true, appearance.solid ? appearance.solid : rockSprite,
+                appearance.solid ? appearance.shell : null, flight);
+        }
+
+        private bool SpawnProjectile(Vector2 position, Vector2 velocity, float damage, bool hostile,
+            Sprite sprite, Sprite shell, RockFlight flight)
         {
             foreach (var item in projectiles)
             {
                 if (item.gameObject.activeSelf) continue;
                 item.transform.position = position;
-                item.transform.localScale = hostile ? new Vector3(.35f,.35f,1) : new Vector3(.5f,.18f,1);
-                item.GetComponent<SpriteRenderer>().color = hostile ? Color.red : Color.white;
-                item.Initialize(this, hostile ? Player.Health : Boss.Health, velocity, damage, hostile ? .65f : 1.35f, hostile);
-                item.gameObject.SetActive(true); return;
+                item.Initialize(this, velocity, damage, hostile, sprite, shell, flight);
+                item.gameObject.SetActive(true);
+                return true;
             }
+            return false;
+        }
+
+        internal ArenaProjectile FirstRockOnPath(Vector2 from, Vector2 to, bool skipping, out float time)
+        {
+            time = float.PositiveInfinity;
+            ArenaProjectile nearest = null;
+            foreach (var item in projectiles)
+            {
+                if (!item.Planted) continue;
+                float contact = ArenaProjectile.ContactTime(from, to, item.transform.position, .8f);
+                if (contact >= time || skipping && contact == 0) continue;
+                nearest = item;
+                time = contact;
+            }
+            return nearest;
+        }
+
+        internal bool StrikeRocks(Vector2 from, Vector2 to, float radius, int strike = 0)
+        {
+            bool hit = false;
+            foreach (var item in projectiles)
+                if (item.Planted && !float.IsPositiveInfinity(
+                    ArenaProjectile.ContactTime(from, to, item.transform.position, radius))) hit |= item.Strike(strike);
+            return hit;
+        }
+
+        internal void ExplodeRock(Vector2 center, float radius)
+        {
+            ShakeImpact(center, Vector2.down * .25f);
+            PlayEffect(rockExplosionSound);
+            Flash(center, Vector2.one * (radius * 2), new Color(1, .28f, .12f, .65f), .22f);
+            Burst(sparkMesh, center, Vector2.one, new Color(1, .55f, .15f), .25f, Vector2.zero, radius * 2);
+            if (Vector2.Distance(center, Player.transform.position) <= radius) Player.Health.Hit(20, .65f);
         }
     }
 }

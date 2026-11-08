@@ -1518,7 +1518,7 @@ MonoBehaviour:
   spreadWarningSound: {fileID: 0}
   giantSprite: {fileID: -1817222694525845891, guid: 4d075359de183e24ba72bf64530ac654, type: 3}
   fistSprite: {fileID: 44108964987733244, guid: b289b70c33e38f748af295945801c08f, type: 3}
-  phaseTwoHealth: 900
+  phaseTwoHealth: 2700
   spreadSound: {fileID: 0}
   slamWarningSound: {fileID: 0}
   slamSound: {fileID: 8300000, guid: baa12274e3a151d4dad5d81d71bbdc90, type: 3}
@@ -1530,7 +1530,7 @@ MonoBehaviour:
   skipWarningSound: {fileID: 0}
   skipSound: {fileID: 8300000, guid: 14edfccfb19d2864c93959aed31719c5, type: 3}
   vanishSound: {fileID: 8300000, guid: 59d541bfcd7682344aae00d5a2e702e0, type: 3}
-  fistImpactSound: {fileID: 8300000, guid: 89ef9751a5f64b842becfe7b43ad615c, type: 3}
+  fistImpactSound: {fileID: 8300000, guid: b9dbb9a7c29a58a42909336592e00ac1, type: 3}
   fistSlamSound: {fileID: 8300000, guid: c43191f2192562946909709ad6d1292c, type: 3}
 --- !u!114 &286678483
 MonoBehaviour:

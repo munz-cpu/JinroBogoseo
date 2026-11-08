@@ -85,14 +85,14 @@ namespace BossTemplate
             }
         }
 
-        internal void LaunchAirHockey(float duration, AudioClip bounceSound, int paddle)
+        internal void LaunchAirHockey(float duration, AudioClip bounceSound)
         {
             hockeyBounceSound = bounceSound;
             launchAt = Time.time;
             expires = launchAt + duration;
             Vector2 position = transform.position;
-            AimAirHockeyAtPlayer(position, paddle == 0 ? 1 : -1, velocity.magnitude, arena.Boss.AirHockeyCourt);
-            arena.Boss.RecordHockeyStrike(paddle, position.y);
+            AimAirHockeyAtPlayer(position, 1, velocity.magnitude, arena.Boss.AirHockeyCourt);
+            arena.Boss.RecordHockeyStrike(0, position.y);
             arena.ShowHockeyImpact(position, velocity.normalized, hockeyBounceSound, paddle: true);
         }
 

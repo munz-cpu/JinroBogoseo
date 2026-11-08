@@ -92,8 +92,7 @@ namespace BossTemplate
         {
             const float setup = .55f;
             const float serveWarning = .5f;
-            const float duration = 12f;
-            const float secondServeDelay = 6f;
+            const float duration = 10f;
             Vector2 leftStart = fists[0].transform.position;
             Vector2 rightStart = fists[1].transform.position;
             holdBothFists = true;
@@ -126,53 +125,27 @@ namespace BossTemplate
                 yield return null;
             }
 
-            if (!arena.Finished)
+            if (!arena.Finished && puck && puck.IsAirHockeyPuck)
             {
                 Intent = "돌 에어하키";
-                float endTime = Time.time + duration;
-                float secondServeTime = Time.time + secondServeDelay;
                 hockeyStrikeTimes[0] = hockeyStrikeTimes[1] = float.NegativeInfinity;
-                var pucks = new ArenaProjectile[2];
-                if (puck && puck.IsAirHockeyPuck)
+                puck.LaunchAirHockey(duration, fistImpactSound);
+                while (!arena.Finished && puck.IsAirHockeyPuck)
                 {
-                    fists[0].transform.position = HockeyPaddlePosition(0, AirHockeyCourt, puck.transform.position.y, HockeyStrikeReach);
-                    puck.LaunchAirHockey(duration, fistImpactSound, 0);
-                    pucks[0] = puck;
-                }
-
-                bool secondServed = false;
-                while (!arena.Finished && Time.time < endTime)
-                {
-                    for (int i = 0; i < pucks.Length; i++)
-                        if (pucks[i] && !pucks[i].IsAirHockeyPuck) pucks[i] = null;
-
-                    court = AirHockeyCourt;
-                    if (HockeyHitstopActive)
-                    {
-                        yield return null;
-                        continue;
-                    }
-
-                    float secondsToServe = secondServed ? float.PositiveInfinity : secondServeTime - Time.time;
-                    if (secondsToServe <= 0)
-                    {
-                        float y = Mathf.Clamp(fists[1].transform.position.y, court.yMin, court.yMax);
-                        var second = arena.SpawnRock(new Vector2(court.xMax, y), Vector2.left * 22, 20, RockFlight.AirHockey);
-                        if (second)
-                        {
-                            second.LaunchAirHockey(endTime - Time.time, fistImpactSound, 1);
-                            pucks[1] = second;
-                            secondServed = true;
-                            Intent = "돌 에어하키 · 저글링";
-                            secondsToServe = float.PositiveInfinity;
-                        }
-                    }
-                    if (secondServed && !pucks[0] && !pucks[1]) break;
-
                     if (!HockeyHitstopActive)
                     {
-                        UpdateHockeyPaddle(0, court, pucks, float.PositiveInfinity);
-                        UpdateHockeyPaddle(1, court, pucks, secondsToServe);
+                        court = AirHockeyCourt;
+                        float receiveY = puck.PredictAirHockeyReturn(court, out int receiver, out float secondsToHit);
+                        for (int i = 0; i < fists.Length; i++)
+                        {
+                            float y = fists[i].transform.position.y;
+                            if (i == receiver) y = Mathf.MoveTowards(y, receiveY, Time.deltaTime * 24);
+                            float timeSinceStrike = Time.unscaledTime - hockeyStrikeTimes[i];
+                            float stroke = timeSinceStrike < .15f
+                                ? Mathf.SmoothStep(HockeyStrikeReach, 0, timeSinceStrike / .15f)
+                                : i == receiver ? HockeyStrikeOffset(secondsToHit) : 0;
+                            fists[i].transform.position = HockeyPaddlePosition(i, court, y, stroke);
+                        }
                     }
                     yield return null;
                 }
@@ -188,29 +161,6 @@ namespace BossTemplate
             hockeyHitstopUntil = Time.unscaledTime + HockeyHitstopDuration;
             hockeyStrikeTimes[paddle] = hockeyHitstopUntil;
             fists[paddle].transform.position = HockeyPaddlePosition(paddle, AirHockeyCourt, impactY, HockeyStrikeReach);
-        }
-
-        private void UpdateHockeyPaddle(int index, Rect court, ArenaProjectile[] pucks, float secondsToServe)
-        {
-            float currentY = fists[index].transform.position.y;
-            float targetY = currentY;
-            float secondsToHit = float.PositiveInfinity;
-            foreach (var puck in pucks)
-            {
-                if (!puck) continue;
-                float receiveY = puck.PredictAirHockeyReturn(court, out int receiver, out float seconds);
-                if (receiver != index || seconds >= secondsToHit) continue;
-                targetY = receiveY;
-                secondsToHit = seconds;
-            }
-
-            float y = Mathf.MoveTowards(currentY, targetY, Time.deltaTime * 24);
-            float nextStrike = Mathf.Min(secondsToHit, secondsToServe);
-            float timeSinceStrike = Time.unscaledTime - hockeyStrikeTimes[index];
-            float stroke = timeSinceStrike < .15f
-                ? Mathf.SmoothStep(HockeyStrikeReach, 0, timeSinceStrike / .15f)
-                : HockeyStrikeOffset(nextStrike);
-            fists[index].transform.position = HockeyPaddlePosition(index, court, y, stroke);
         }
 
         private static float HockeyServeHeight(Rect court) => Mathf.Lerp(court.yMin, court.yMax, .24f);

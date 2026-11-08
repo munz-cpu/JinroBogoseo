@@ -11,7 +11,7 @@ namespace BossTemplate
         [SerializeField] private Sprite[] idleFrames, chargeFrames, shootFrames, slamFrames, defeatFrames;
         [SerializeField, InspectorName("2페이즈 거대 골렘")] private Sprite giantSprite;
         [SerializeField, InspectorName("2페이즈 주먹")] private Sprite fistSprite;
-        [SerializeField, Min(1), InspectorName("2페이즈 최대 체력")] private float phaseTwoHealth = 900;
+        [SerializeField, Min(1), InspectorName("2페이즈 최대 체력")] private float phaseTwoHealth = 2700;
         [Header("패턴 효과음")]
         [SerializeField, InspectorName("부채꼴 탄막 예고")] private AudioClip spreadWarningSound;
         [SerializeField, InspectorName("부채꼴 탄막 발사")] private AudioClip spreadSound;

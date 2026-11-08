@@ -35,6 +35,7 @@ namespace BossTemplate
         private float phaseOneHealth;
         private AudioSource effectsAudio;
         private Mesh rockDustMesh;
+        private ArenaHealthOrb healthOrb;
         private CinemachineBrain cameraBrain;
         private CinemachineVirtualCameraBase shakeCamera;
         private readonly CinemachineImpulseDefinition impactImpulse = new CinemachineImpulseDefinition
@@ -153,8 +154,27 @@ namespace BossTemplate
         private void ClearAttacks()
         {
             if (effectsAudio) effectsAudio.Stop();
+            if (healthOrb) healthOrb.gameObject.SetActive(false);
             foreach (var item in projectiles) item.gameObject.SetActive(false);
             foreach (var item in effects) item.gameObject.SetActive(false);
+        }
+
+        internal void DropHealthOrb(Vector2 position)
+        {
+            if (!healthOrb)
+            {
+                var pickup = new GameObject("회복 구슬");
+                pickup.transform.SetParent(transform, true);
+                healthOrb = pickup.AddComponent<ArenaHealthOrb>();
+                healthOrb.Initialize(this, projectiles[0].GetComponent<SpriteRenderer>().sharedMaterial);
+            }
+            healthOrb.Drop(position);
+        }
+
+        internal void ShowHealthOrbPickup(Vector2 position)
+        {
+            Burst(jumpRingMesh, position, Vector2.one * 1.2f, new Color(.35f, 1, .45f), .32f,
+                Vector2.up * .6f, 2);
         }
 
 #if UNITY_EDITOR

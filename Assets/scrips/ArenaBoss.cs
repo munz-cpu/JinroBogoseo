@@ -46,9 +46,9 @@ namespace BossTemplate
         private float giantFollowVelocity;
         private readonly SpriteRenderer[] fists = new SpriteRenderer[2];
         private readonly float[] fistFlashUntil = new float[2];
-        private int attackingFist = -1;
+        private readonly bool[] fistBusy = new bool[2];
         private bool holdBothFists;
-        private float fistWindupUntil;
+        private readonly float[] fistWindupUntil = new float[2];
         private float fistOrbitStart;
         private static readonly Color FistWarningColor = new Color(1, .52f, .23f);
         public FighterHealth Health { get; private set; }
@@ -89,7 +89,9 @@ namespace BossTemplate
             Phase = 1;
             Transitioning = false;
             giantFollowVelocity = 0;
-            attackingFist = -1;
+            fistBusy[0] = fistBusy[1] = false;
+            fistWindupUntil[0] = fistWindupUntil[1] = 0;
+            hockeyHitstopUntil = 0;
             holdBothFists = false;
             foreach (var fist in fists) fist.enabled = false;
             if (appearance)
@@ -250,9 +252,9 @@ namespace BossTemplate
                 {
                     if (arena.Finished) fists[i].enabled = false;
                     if (!fists[i].enabled) continue;
-                    if (!holdBothFists && i != attackingFist) fists[i].transform.position = FistOrbitPosition(i);
+                    if (!holdBothFists && !fistBusy[i]) fists[i].transform.position = FistOrbitPosition(i);
                     fists[i].color = Time.time < fistFlashUntil[i] ? ArenaProjectile.HitFlashColor
-                        : i == attackingFist && Time.time < fistWindupUntil ? FistWarningColor : Color.white;
+                        : fistBusy[i] && Time.time < fistWindupUntil[i] ? FistWarningColor : Color.white;
                 }
                 return;
             }

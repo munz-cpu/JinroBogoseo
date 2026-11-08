@@ -18,6 +18,7 @@ namespace BossTemplate
         public float Current { get; private set; }
         public float Maximum => maximum;
         public bool Dead => Current <= 0;
+        internal float LastDamageTime { get; private set; } = float.NegativeInfinity;
         public float InvulnerableUntil { get; set; }
 #if UNITY_EDITOR
         public bool DebugInvincible { get; set; }
@@ -45,6 +46,7 @@ namespace BossTemplate
         {
             maximum = value;
             Current = value;
+            LastDamageTime = float.NegativeInfinity;
             InvulnerableUntil = hitFlashUntil = 0;
             SetHitFlash(false);
         }
@@ -61,6 +63,7 @@ namespace BossTemplate
             InvulnerableUntil = Time.time + immunity;
             if (lostHealth)
             {
+                LastDamageTime = Time.time;
                 if (flash) hitFlashUntil = Time.time + HitFlashDuration;
                 if (arena) arena.PlayEffect(Dead && defeatSound ? defeatSound : hitSound);
             }

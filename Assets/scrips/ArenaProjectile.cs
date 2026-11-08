@@ -30,6 +30,7 @@ namespace BossTemplate
         private bool hostile;
         private bool isRock;
         private bool planted;
+        private bool healingMine;
         private Color normalColor;
         private float hitFlashUntil;
         private RockFlight flight;
@@ -57,6 +58,7 @@ namespace BossTemplate
             launchAt = Time.time + holdTime;
             expires = launchAt + (mode switch { RockFlight.Launch => .65f, RockFlight.Burst => .48f, _ => 5f });
             planted = false;
+            healingMine = false;
             rockHits = !rock ? 0 : mode is RockFlight.Falling or RockFlight.Skipping or RockFlight.Mine ? 5 : 3;
             hitFlashUntil = 0;
             transform.localScale = sprite && !enemy ? Vector3.one * 1.65f : sprite ? Vector3.one * RockSizeMultiplier * (mode switch
@@ -90,7 +92,7 @@ namespace BossTemplate
             expires = launchAt + duration;
             Vector2 position = transform.position;
             AimAirHockeyAtPlayer(position, paddle == 0 ? 1 : -1, velocity.magnitude, arena.Boss.AirHockeyCourt);
-            arena.Boss.RecordHockeyStrike(paddle);
+            arena.Boss.RecordHockeyStrike(paddle, position.y);
             arena.ShowHockeyImpact(position, velocity.normalized, hockeyBounceSound, paddle: true);
         }
 
@@ -103,11 +105,56 @@ namespace BossTemplate
             return court.yMin + Mathf.PingPong(projectedY, court.height);
         }
 
-        internal void Strike()
+        internal void SeparateAirHockeyPuck(ArenaProjectile other, Rect court)
+        {
+            Vector2 first = transform.position;
+            Vector2 second = other.transform.position;
+            Vector2 offset = second - first;
+            Vector2 firstExtent = surface.bounds.extents;
+            Vector2 secondExtent = other.surface.bounds.extents;
+            Vector2 clearance = firstExtent + secondExtent + Vector2.one * .05f;
+            if (Mathf.Abs(offset.x) >= clearance.x || Mathf.Abs(offset.y) >= clearance.y) return;
+
+            Vector2 relativeVelocity = velocity - other.velocity;
+            Vector2 normal = offset.sqrMagnitude > .0001f ? offset.normalized : relativeVelocity.normalized;
+            if (normal == Vector2.zero) normal = Vector2.up;
+            float gap = Mathf.Min(clearance.x / Mathf.Max(.001f, Mathf.Abs(normal.x)),
+                clearance.y / Mathf.Max(.001f, Mathf.Abs(normal.y)));
+            if (Mathf.Abs(normal.x) * gap > court.width || Mathf.Abs(normal.y) * gap > court.height)
+                normal = court.width >= court.height ? Vector2.right : Vector2.up;
+            gap = Mathf.Min(gap, Mathf.Max(court.width, court.height));
+
+            Vector2 halfGap = normal * (gap * .5f);
+            Vector2 center = (first + second) * .5f;
+            float horizontal = Mathf.Abs(halfGap.x);
+            float vertical = Mathf.Abs(halfGap.y);
+            center.x = Mathf.Clamp(center.x, court.xMin + horizontal, court.xMax - horizontal);
+            center.y = Mathf.Clamp(center.y, court.yMin + vertical, court.yMax - vertical);
+            transform.position = center - halfGap;
+            other.transform.position = center + halfGap;
+
+            float approach = Vector2.Dot(relativeVelocity, normal);
+            if (approach <= 0) return;
+            ApplyHockeyDeflection(velocity - normal * approach);
+            other.ApplyHockeyDeflection(other.velocity + normal * approach);
+        }
+
+        private void ApplyHockeyDeflection(Vector2 direction)
+        {
+            // Keep a horizontal component so the puck can still reach a paddle.
+            if (Mathf.Abs(direction.x) < 3f)
+                direction.x = 3f * Mathf.Sign(direction.x == 0 ? velocity.x : direction.x);
+            velocity = direction.normalized * velocity.magnitude;
+        }
+
+        internal void MarkHealingMine() => healingMine = true;
+
+        internal void Strike(bool destroyedByPlayer)
         {
             if (!gameObject.activeSelf || rockHits <= 0) return;
             if (--rockHits == 0)
             {
+                if (healingMine && destroyedByPlayer) arena.DropHealthOrb(transform.position);
                 arena.ShakeImpact(transform.position, Vector2.down * .09f);
                 arena.ShowRockBreak(transform.position, surface.bounds.size);
                 gameObject.SetActive(false);
@@ -148,7 +195,7 @@ namespace BossTemplate
             }
             if (flight == RockFlight.AirHockey)
             {
-                UpdateAirHockey(Time.deltaTime);
+                if (!arena.Boss.HockeyHitstopActive) UpdateAirHockey(Time.deltaTime);
                 return;
             }
 
@@ -226,7 +273,7 @@ namespace BossTemplate
                     position.x = side;
                     float direction = -Mathf.Sign(velocity.x);
                     AimAirHockeyAtPlayer(position, direction, Mathf.Min(AirHockeyMaxSpeed, velocity.magnitude + 1.4f), court);
-                    arena.Boss.RecordHockeyStrike(direction > 0 ? 0 : 1);
+                    arena.Boss.RecordHockeyStrike(direction > 0 ? 0 : 1, position.y);
                 }
                 else
                 {
@@ -234,6 +281,7 @@ namespace BossTemplate
                     velocity.y = -velocity.y;
                 }
                 arena.ShowHockeyImpact(position, velocity.normalized, hockeyBounceSound, paddle);
+                if (paddle) break;
             }
             transform.position = position;
             transform.Rotate(0, 0, -deltaTime * velocity.x * 55);
@@ -269,18 +317,24 @@ namespace BossTemplate
         {
             if (!isRock) return;
             bool flashing = Time.time < hitFlashUntil;
+            Color rockColor = normalColor;
+            if (healingMine)
+            {
+                float pulse = .5f + .5f * Mathf.Sin(Time.time * 9);
+                rockColor = Color.Lerp(new Color(.12f, .78f, .2f), new Color(.57f, 1, .48f), pulse);
+            }
             if (rockShell && rockShell.enabled)
             {
-                rockShell.color = flashing ? HitFlashColor : Color.white;
-                surface.color = normalColor;
+                rockShell.color = flashing ? HitFlashColor : healingMine ? rockColor : Color.white;
+                surface.color = rockColor;
             }
             else
             {
-                Color color = normalColor;
+                Color color = rockColor;
                 if (Time.time < launchAt)
                 {
                     float pulse = Mathf.PingPong((launchAt - Time.time) * 5f, 1f);
-                    color = Color.Lerp(normalColor, new Color(1, .58f, .25f), pulse * .7f);
+                    color = Color.Lerp(rockColor, new Color(1, .58f, .25f), pulse * .7f);
                 }
                 surface.color = flashing ? HitFlashColor : color;
             }
@@ -309,7 +363,7 @@ namespace BossTemplate
                 ArenaProjectile rock = arena.FirstRockOnPath(from, to, hostile, flight == RockFlight.Skipping, out float rockTime);
                 if (rock && rockTime <= targetTime)
                 {
-                    rock.Strike();
+                    rock.Strike(destroyedByPlayer: !hostile);
                     if (flight == RockFlight.Skipping) return false;
                     gameObject.SetActive(false);
                     return true;

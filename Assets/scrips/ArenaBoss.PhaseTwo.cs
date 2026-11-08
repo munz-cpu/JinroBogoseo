@@ -7,7 +7,10 @@ namespace BossTemplate
     {
         private static readonly Color FistLaneColor = new Color(1, .55f, .2f, .38f);
         private const float HockeyStrikeReach = .5f;
+        private const float HockeyHitstopDuration = .065f;
         private readonly float[] hockeyStrikeTimes = new float[2];
+        private float hockeyHitstopUntil;
+        internal bool HockeyHitstopActive => Time.unscaledTime < hockeyHitstopUntil;
 
         private IEnumerator FightWithFists()
         {
@@ -39,35 +42,48 @@ namespace BossTemplate
 
         private IEnumerator FistSlams()
         {
-            for (int slam = 0; slam < 3 && !arena.Finished; slam++)
+            const int slamCount = 3;
+            yield return PrepareSlam(0);
+            for (int slam = 0; slam < slamCount && !arena.Finished; slam++)
             {
                 int index = slam % fists.Length;
                 SpriteRenderer fist = fists[index];
-                attackingFist = index;
-                float x = ClampFistX(PlayerPosition.x, fist);
+                Coroutine nextWindup = slam + 1 < slamCount ? StartCoroutine(PrepareSlam((index + 1) % fists.Length)) : null;
+                float x = fist.transform.position.x;
                 float bottom = arena.GroundY + fist.bounds.extents.y;
-                float top = Mathf.Max(bottom + 4.5f, PlayerPosition.y + 2.8f);
-                var raised = new Vector2(x, top);
-                const float raiseSpeed = 48;
-                const float windup = .24f;
-                float lead = Vector2.Distance(fist.transform.position, raised) / raiseSpeed + windup;
-                Intent = "연속 내려찍기 예고";
-                arena.Flash(new Vector2(x, (top + arena.GroundY) * .5f),
-                    new Vector2(fist.bounds.size.x, top - arena.GroundY), FistLaneColor, lead);
-                fistWindupUntil = Time.time + lead;
-                yield return MoveFist(fist, raised, raiseSpeed);
-                yield return new WaitForSeconds(windup);
-                if (arena.Finished) yield break;
-
                 Intent = "연속 내려찍기";
-                yield return MoveFist(fist, new Vector2(x, bottom), 44, 24);
+                yield return MoveFist(fist, new Vector2(x, bottom), 26, 24);
                 if (arena.Finished) yield break;
                 var impact = new Vector2(x, arena.GroundY);
                 arena.ShowRockLandingDust(impact, fist.bounds.size.x, playSound: false);
                 arena.ShakeImpact(impact, Vector2.down * .34f);
                 arena.PlayEffect(fistSlamSound);
-                yield return ReturnFist(index, recovery: .22f);
+                Coroutine recovery = StartCoroutine(ReturnFist(index));
+                if (nextWindup != null) yield return nextWindup;
+                else yield return recovery;
             }
+        }
+
+        private IEnumerator PrepareSlam(int index)
+        {
+            while (fistBusy[index] && !arena.Finished) yield return null;
+            if (arena.Finished) yield break;
+
+            SpriteRenderer fist = fists[index];
+            fistBusy[index] = true;
+            float x = ClampFistX(PlayerPosition.x, fist);
+            float bottom = arena.GroundY + fist.bounds.extents.y;
+            float top = Mathf.Max(bottom + 4.5f, PlayerPosition.y + 2.8f);
+            var raised = new Vector2(x, top);
+            const float raiseSpeed = 28;
+            const float windup = .55f;
+            float lead = Vector2.Distance(fist.transform.position, raised) / raiseSpeed + windup;
+            Intent = "연속 내려찍기 예고";
+            arena.Flash(new Vector2(x, (top + arena.GroundY) * .5f),
+                new Vector2(fist.bounds.size.x, top - arena.GroundY), FistLaneColor, lead);
+            fistWindupUntil[index] = Time.time + lead;
+            yield return MoveFist(fist, raised, raiseSpeed);
+            yield return new WaitForSeconds(windup);
         }
 
         internal Rect AirHockeyCourt => arena.GetAirHockeyCourt(fists[0].bounds.extents.x);
@@ -81,6 +97,7 @@ namespace BossTemplate
             Vector2 leftStart = fists[0].transform.position;
             Vector2 rightStart = fists[1].transform.position;
             holdBothFists = true;
+            hockeyHitstopUntil = 0;
             Intent = "돌 에어하키 예고";
             fists[0].flipX = false;
             fists[1].flipX = true;
@@ -130,6 +147,13 @@ namespace BossTemplate
                         if (pucks[i] && !pucks[i].IsAirHockeyPuck) pucks[i] = null;
 
                     court = AirHockeyCourt;
+                    if (pucks[0] && pucks[1]) pucks[0].SeparateAirHockeyPuck(pucks[1], court);
+                    if (HockeyHitstopActive)
+                    {
+                        yield return null;
+                        continue;
+                    }
+
                     float secondsToServe = secondServed ? float.PositiveInfinity : secondServeTime - Time.time;
                     if (secondsToServe <= 0)
                     {
@@ -139,6 +163,7 @@ namespace BossTemplate
                         {
                             second.LaunchAirHockey(endTime - Time.time, fistImpactSound, 1);
                             pucks[1] = second;
+                            if (pucks[0]) pucks[0].SeparateAirHockeyPuck(second, court);
                             secondServed = true;
                             Intent = "돌 에어하키 · 저글링";
                             secondsToServe = float.PositiveInfinity;
@@ -146,8 +171,11 @@ namespace BossTemplate
                     }
                     if (secondServed && !pucks[0] && !pucks[1]) break;
 
-                    UpdateHockeyPaddle(0, court, pucks, float.PositiveInfinity);
-                    UpdateHockeyPaddle(1, court, pucks, secondsToServe);
+                    if (!HockeyHitstopActive)
+                    {
+                        UpdateHockeyPaddle(0, court, pucks, float.PositiveInfinity);
+                        UpdateHockeyPaddle(1, court, pucks, secondsToServe);
+                    }
                     yield return null;
                 }
             }
@@ -157,7 +185,12 @@ namespace BossTemplate
             holdBothFists = false;
         }
 
-        internal void RecordHockeyStrike(int paddle) => hockeyStrikeTimes[paddle] = Time.time;
+        internal void RecordHockeyStrike(int paddle, float impactY)
+        {
+            hockeyHitstopUntil = Time.unscaledTime + HockeyHitstopDuration;
+            hockeyStrikeTimes[paddle] = hockeyHitstopUntil;
+            fists[paddle].transform.position = HockeyPaddlePosition(paddle, AirHockeyCourt, impactY, HockeyStrikeReach);
+        }
 
         private void UpdateHockeyPaddle(int index, Rect court, ArenaProjectile[] pucks, float secondsToServe)
         {
@@ -175,7 +208,7 @@ namespace BossTemplate
 
             float y = Mathf.MoveTowards(currentY, targetY, Time.deltaTime * 24);
             float nextStrike = Mathf.Min(secondsToHit, secondsToServe);
-            float timeSinceStrike = Time.time - hockeyStrikeTimes[index];
+            float timeSinceStrike = Time.unscaledTime - hockeyStrikeTimes[index];
             float stroke = timeSinceStrike < .15f
                 ? Mathf.SmoothStep(HockeyStrikeReach, 0, timeSinceStrike / .15f)
                 : HockeyStrikeOffset(nextStrike);
@@ -209,14 +242,14 @@ namespace BossTemplate
         {
             int index = PlayerPosition.x < arena.GroundBounds.center.x ? 0 : 1;
             SpriteRenderer fist = fists[index];
-            attackingFist = index;
+            fistBusy[index] = true;
             float startX = ClampFistX(index == 0 ? arena.GroundBounds.min.x : arena.GroundBounds.max.x, fist);
             float endX = ClampFistX(index == 0 ? arena.GroundBounds.max.x : arena.GroundBounds.min.x, fist);
             float bottom = arena.GroundY + fist.bounds.extents.y;
             fist.flipX = endX < startX;
             Intent = "주먹이 플레이어 높이를 추적한다";
             const float tracking = 2f;
-            fistWindupUntil = Time.time + tracking;
+            fistWindupUntil[index] = Time.time + tracking;
             for (float elapsed = 0; elapsed < tracking && !arena.Finished; elapsed += Time.deltaTime)
             {
                 Vector2 follow = new Vector2(startX, Mathf.Max(PlayerPosition.y, bottom));
@@ -227,7 +260,7 @@ namespace BossTemplate
 
             float lockedY = fist.transform.position.y;
             const float warning = .55f;
-            fistWindupUntil = Time.time + warning;
+            fistWindupUntil[index] = Time.time + warning;
             arena.Flash(new Vector2(arena.GroundBounds.center.x, lockedY),
                 new Vector2(arena.GroundBounds.size.x, fist.bounds.size.y), FistLaneColor, warning);
             yield return new WaitForSeconds(warning);
@@ -245,6 +278,7 @@ namespace BossTemplate
             const float halfWidth = (mineCount - 1) * spacing * .5f;
             Bounds bounds = arena.GroundBounds;
             float center = Mathf.Clamp(PlayerPosition.x, bounds.min.x + halfWidth + 1, bounds.max.x - halfWidth - 1);
+            int healingMine = Random.Range(0, mineCount);
             Intent = "돌 지뢰밭 예고";
             for (int i = 0; i < mineCount; i++)
             {
@@ -260,7 +294,8 @@ namespace BossTemplate
                 const float flightTime = 1f;
                 Vector2 velocity = (destination - origin) / flightTime;
                 velocity.y += ArenaProjectile.RockGravity * flightTime * .5f;
-                arena.SpawnRock(origin, velocity, 15, RockFlight.Mine);
+                ArenaProjectile mine = arena.SpawnRock(origin, velocity, 15, RockFlight.Mine);
+                if (mine && i == healingMine) mine.MarkHealingMine();
                 yield return new WaitForSeconds(.14f);
             }
         }
@@ -329,16 +364,17 @@ namespace BossTemplate
             }
         }
 
-        private IEnumerator ReturnFist(int index, float recovery = .55f)
+        private IEnumerator ReturnFist(int index)
         {
             SpriteRenderer fist = fists[index];
             Vector2 start = fist.transform.position;
+            const float recovery = .55f;
             for (float elapsed = 0; elapsed < recovery && !arena.Finished; elapsed += Time.deltaTime)
             {
                 fist.transform.position = Vector2.Lerp(start, FistOrbitPosition(index), Mathf.SmoothStep(0, 1, elapsed / recovery));
                 yield return null;
             }
-            attackingFist = -1;
+            fistBusy[index] = false;
         }
     }
 }

@@ -17,6 +17,9 @@ namespace BossTemplate
         [SerializeField, InspectorName("탄창 사용")] private bool useMagazine = true;
         [SerializeField, Min(1), InspectorName("탄창 크기")] private int magazineSize = 40;
         [SerializeField, Min(.1f), InspectorName("재장전 시간")] private float reloadDuration = .9f;
+        [Header("체력 재생")]
+        [SerializeField, Min(0), InspectorName("초당 체력 회복량")] private float healthRegenPerSecond = 4;
+        [SerializeField, Min(0), InspectorName("피격 후 재생 대기 시간")] private float healthRegenDelay = 3;
         [Header("효과음")]
         [SerializeField, InspectorName("점프")] private AudioClip jumpSound;
         [SerializeField, InspectorName("더블 점프")] private AudioClip doubleJumpSound;
@@ -88,8 +91,14 @@ namespace BossTemplate
         private void Update()
         {
             body.color = Time.time < Health.InvulnerableUntil ? Color.white : baseColor;
+            bool finished = arena.Finished;
+            if (!finished && Health.Current < Health.Maximum)
+            {
+                float regenTime = Mathf.Min(Time.deltaTime, Time.time - Health.LastDamageTime - healthRegenDelay);
+                if (regenTime > 0) Health.Restore(healthRegenPerSecond * regenTime);
+            }
             var k = Keyboard.current;
-            if (arena.Finished || k == null)
+            if (finished || k == null)
             {
                 if (visuals) visuals.SetState(0, grounded, vertical, facing, Health.Dead);
                 return;

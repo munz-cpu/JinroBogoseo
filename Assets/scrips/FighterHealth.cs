@@ -19,6 +19,9 @@ namespace BossTemplate
         public float Maximum => maximum;
         public bool Dead => Current <= 0;
         public float InvulnerableUntil { get; set; }
+#if UNITY_EDITOR
+        public bool DebugInvincible { get; set; }
+#endif
         internal void InitializeAudio(BossArena owner) => arena = owner;
         private void Awake()
         {
@@ -46,8 +49,11 @@ namespace BossTemplate
             SetHitFlash(false);
         }
         public void Restore(float amount) { if (!Dead) Current = Mathf.Min(maximum, Current + Mathf.Max(0, amount)); }
-        public bool Hit(float damage, float immunity = 0)
+        public bool Hit(float damage, float immunity = 0, bool flash = true)
         {
+#if UNITY_EDITOR
+            if (DebugInvincible) return false;
+#endif
             if (Dead || Time.time < InvulnerableUntil) return false;
             float remaining = Mathf.Max(0, Current - Mathf.Max(0, damage));
             bool lostHealth = remaining < Current;
@@ -55,7 +61,7 @@ namespace BossTemplate
             InvulnerableUntil = Time.time + immunity;
             if (lostHealth)
             {
-                hitFlashUntil = Time.time + HitFlashDuration;
+                if (flash) hitFlashUntil = Time.time + HitFlashDuration;
                 if (arena) arena.PlayEffect(Dead && defeatSound ? defeatSound : hitSound);
             }
             return true;

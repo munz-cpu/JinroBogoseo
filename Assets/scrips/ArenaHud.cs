@@ -25,7 +25,9 @@ namespace BossTemplate
                 displayedRounds = rounds;
                 displayedCapacity = capacity;
             }
-            result.text = arena.Finished ? (arena.Boss.Health.Dead ? "승리! Enter로 재도전" : "패배! Enter로 재도전") : "";
+            result.text = arena.Finished
+                ? (arena.Player.Health.Dead ? "패배! Enter로 재도전" : "승리! Enter로 재도전")
+                : "";
         }
 
         private static void UpdateHealthBar(Slider slider, FighterHealth health)

@@ -32,6 +32,7 @@ namespace BossTemplate
         [SerializeField, InspectorName("낙석 착지 효과음")] private AudioClip rockLandingSound;
         [SerializeField, Range(0, 2), InspectorName("충돌 화면 흔들림")] private float shakeStrength = 1;
         private Vector3 playerStart, bossStart;
+        private float phaseOneHealth;
         private AudioSource effectsAudio;
         private Mesh rockDustMesh;
         private CinemachineBrain cameraBrain;
@@ -44,7 +45,7 @@ namespace BossTemplate
         };
         public SideViewPlayer Player => player;
         public ArenaBoss Boss => boss;
-        public bool Finished => Player.Health.Dead || Boss.Health.Dead;
+        public bool Finished => Player.Health.Dead || (Boss.Phase == 2 && Boss.Health.Dead);
         internal float RockPlantChance => rockPlantChance;
         internal float RockFuse => Mathf.Max(.1f, rockFuse);
 
@@ -108,6 +109,7 @@ namespace BossTemplate
             if (arenaCamera) cameraBrain = arenaCamera.GetComponent<CinemachineBrain>();
             playerStart = player.transform.position; bossStart = boss.transform.position;
             Player.Initialize(this); Boss.Initialize(this);
+            phaseOneHealth = Boss.Health.Maximum;
             Player.Health.InitializeAudio(this);
             Boss.Health.InitializeAudio(this);
             ResetFight();
@@ -115,13 +117,16 @@ namespace BossTemplate
 
         private void OnDestroy() => Destroy(rockDustMesh);
 
-        internal void ShakeImpact(Vector2 position, Vector2 impulse)
+        internal void ShakeImpact(Vector2 position, Vector2 impulse, bool allowOffscreen = false)
         {
             if (shakeStrength <= 0 || !cameraBrain
                 || !(cameraBrain.ActiveVirtualCamera is CinemachineVirtualCameraBase activeCamera)) return;
 
-            Vector3 viewport = arenaCamera.WorldToViewportPoint(position);
-            if (viewport.x < -.05f || viewport.x > 1.05f || viewport.y < -.05f || viewport.y > 1.05f) return;
+            if (!allowOffscreen)
+            {
+                Vector3 viewport = arenaCamera.WorldToViewportPoint(position);
+                if (viewport.x < -.05f || viewport.x > 1.05f || viewport.y < -.05f || viewport.y > 1.05f) return;
+            }
             if (shakeCamera != activeCamera)
             {
                 if (!activeCamera.TryGetComponent(out CinemachineImpulseListener listener))
@@ -139,13 +144,28 @@ namespace BossTemplate
         }
         public void ResetFight()
         {
+            ClearAttacks();
+            Player.transform.position = playerStart; Boss.transform.position = bossStart;
+            Player.Health.ResetHealth(Player.Health.Maximum); Boss.Health.ResetHealth(phaseOneHealth);
+            Player.ResetState(); Boss.ResetState();
+        }
+
+        private void ClearAttacks()
+        {
             if (effectsAudio) effectsAudio.Stop();
             foreach (var item in projectiles) item.gameObject.SetActive(false);
             foreach (var item in effects) item.gameObject.SetActive(false);
-            Player.transform.position = playerStart; Boss.transform.position = bossStart;
-            Player.Health.ResetHealth(Player.Health.Maximum); Boss.Health.ResetHealth(Boss.Health.Maximum);
-            Player.ResetState(); Boss.ResetState();
         }
+
+#if UNITY_EDITOR
+        public void SkipCurrentPhase()
+        {
+            if (Finished || Boss.Transitioning) return;
+            Boss.Health.InvulnerableUntil = 0;
+            Boss.Health.Hit(Boss.Health.Current);
+            AdvancePhaseIfDefeated();
+        }
+#endif
 
         internal void PlayEffect(AudioClip clip)
         {
@@ -160,7 +180,15 @@ namespace BossTemplate
         }
         private void Update()
         {
+            AdvancePhaseIfDefeated();
             if (Finished && Keyboard.current != null && Keyboard.current.enterKey.wasPressedThisFrame) ResetFight();
+        }
+
+        private void AdvancePhaseIfDefeated()
+        {
+            if (Finished || Boss.Phase != 1 || Boss.Transitioning || !Boss.Health.Dead) return;
+            ClearAttacks();
+            Boss.BeginPhaseTwo();
         }
         public GameObject Flash(Vector2 position, Vector2 size, Color color, float lifetime)
         {
@@ -201,6 +229,35 @@ namespace BossTemplate
             if (playSound) PlayEffect(rockLandingSound);
             Burst(rockDustMesh, position, new Vector2(width, .55f), new Color(.79f, .68f, .53f, .8f),
                 .3f, Vector2.up * .65f, 2f);
+        }
+
+        internal Rect GetAirHockeyCourt(float paddleHalfWidth)
+        {
+            Bounds floor = GroundBounds;
+            Vector3 center = floor.center + Vector3.up * 5;
+            float halfHeight = 5.5f;
+            float halfWidth = floor.extents.x;
+            if (arenaCamera)
+            {
+                var activeCamera = cameraBrain ? cameraBrain.ActiveVirtualCamera : null;
+                center = activeCamera == null ? arenaCamera.transform.position : activeCamera.State.RawPosition;
+                halfHeight = arenaCamera.orthographicSize;
+                halfWidth = halfHeight * arenaCamera.aspect;
+            }
+            float inset = Mathf.Min(paddleHalfWidth * 1.5f, halfWidth * .65f);
+            float bottom = Mathf.Max(GroundY + .95f, center.y - halfHeight + .25f);
+            float top = Mathf.Max(bottom + 2, center.y + halfHeight - .25f);
+            return Rect.MinMaxRect(center.x - halfWidth + inset, bottom, center.x + halfWidth - inset, top);
+        }
+
+        internal void ShowHockeyImpact(Vector2 position, Vector2 rebound, AudioClip sound, bool paddle)
+        {
+            if (paddle) PlayEffect(sound);
+            ShakeImpact(position, rebound * (paddle ? .3f : .13f), allowOffscreen: true);
+            Flash(position, Vector2.one * (paddle ? .75f : .45f),
+                paddle ? new Color(1, .76f, .4f, .76f) : new Color(.52f, .87f, 1, .72f), .08f);
+            Burst(rockDustMesh, position, new Vector2(1.15f, .7f), new Color(.87f, .72f, .51f), .23f,
+                rebound * 2.5f, 2.4f);
         }
 
         private static Mesh CreateRockDustMesh()
@@ -247,29 +304,31 @@ namespace BossTemplate
                     new Color(.7f, .95f, 1), .25f, new Vector2(i * 2, -2), .1f, i * 25);
         }
         public bool SpawnProjectile(Vector2 position, Vector2 velocity, float damage, bool hostile, Sprite sprite = null)
-            => SpawnProjectile(position, velocity, damage, hostile, sprite, null, RockFlight.Straight);
+            => SpawnProjectile(position, velocity, damage, hostile, sprite, null, RockFlight.Straight) != null;
 
-        internal void SpawnRock(Vector2 position, Vector2 velocity, float damage, RockFlight flight = RockFlight.Straight)
+        internal ArenaProjectile SpawnRock(Vector2 position, Vector2 velocity, float damage,
+            RockFlight flight = RockFlight.Straight, float holdTime = 0)
         {
             RockAppearance appearance = default;
             if (fallingRocks != null && fallingRocks.Length > 0)
                 appearance = fallingRocks[Random.Range(0, fallingRocks.Length)];
-            SpawnProjectile(position, velocity, damage, true, appearance.solid ? appearance.solid : rockSprite,
-                flight == RockFlight.Falling && appearance.solid ? appearance.shell : null, flight, true);
+            Sprite shell = flight is RockFlight.Falling or RockFlight.Mine ? appearance.shell : null;
+            return SpawnProjectile(position, velocity, damage, true, appearance.solid ? appearance.solid : rockSprite,
+                shell, flight, true, holdTime);
         }
 
-        private bool SpawnProjectile(Vector2 position, Vector2 velocity, float damage, bool hostile,
-            Sprite sprite, Sprite shell, RockFlight flight, bool rock = false)
+        private ArenaProjectile SpawnProjectile(Vector2 position, Vector2 velocity, float damage, bool hostile,
+            Sprite sprite, Sprite shell, RockFlight flight, bool rock = false, float holdTime = 0)
         {
             foreach (var item in projectiles)
             {
                 if (item.gameObject.activeSelf) continue;
                 item.transform.position = position;
-                item.Initialize(this, velocity, damage, hostile, sprite, shell, flight, rock);
+                item.Initialize(this, velocity, damage, hostile, sprite, shell, flight, rock, holdTime);
                 item.gameObject.SetActive(true);
-                return true;
+                return item;
             }
-            return false;
+            return null;
         }
 
         internal ArenaProjectile FirstRockOnPath(Vector2 from, Vector2 to, bool hostile, bool skipping, out float time)

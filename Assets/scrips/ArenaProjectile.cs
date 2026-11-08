@@ -2,15 +2,17 @@ using UnityEngine;
 
 namespace BossTemplate
 {
-    internal enum RockFlight { Straight, Falling, Skipping, Launch, Crashing, Burst }
+    internal enum RockFlight { Straight, Falling, Skipping, Launch, Crashing, Burst, Mine, Rolling, AirHockey }
 
     public sealed class ArenaProjectile : MonoBehaviour
     {
-        private const float RockGravity = 25;
+        internal const float RockGravity = 25;
         private const float ExplosionRadius = 2.2f;
         // Behind the ground tiles (0), in front of the scenery.
         private const int PlantedSortingOrder = -1;
         private const float RockSizeMultiplier = 1.55f;
+        private const float AirHockeyMaxSpeed = 31f;
+        internal const float MineLandingOffset = .25f * RockSizeMultiplier;
         private const float HitFlashDuration = .10f;
         internal static readonly Color HitFlashColor = new Color(.45f, .9f, 1f);
         internal const float PlantedHalfWidth = .5f * RockSizeMultiplier;
@@ -23,7 +25,7 @@ namespace BossTemplate
         private Sprite defaultSprite;
         private int defaultSortingOrder;
         private Vector2 velocity;
-        private float damage, radius, expires, fuse;
+        private float damage, radius, launchAt, expires, fuse;
         private float rockGroundOffset;
         private bool hostile;
         private bool isRock;
@@ -32,10 +34,12 @@ namespace BossTemplate
         private float hitFlashUntil;
         private RockFlight flight;
         private int rockHits;
+        private AudioClip hockeyBounceSound;
         internal bool Planted => gameObject.activeSelf && planted;
+        internal bool IsAirHockeyPuck => gameObject.activeSelf && flight == RockFlight.AirHockey;
 
         internal void Initialize(BossArena owner, Vector2 speed, float amount, bool enemy,
-            Sprite sprite, Sprite shell, RockFlight mode, bool rock)
+            Sprite sprite, Sprite shell, RockFlight mode, bool rock, float holdTime)
         {
             if (!surface)
             {
@@ -50,13 +54,15 @@ namespace BossTemplate
             isRock = rock;
             flight = mode;
             radius = enemy ? .65f : owner.Boss.ProjectileHitRadius;
-            expires = Time.time + (mode switch { RockFlight.Launch => .65f, RockFlight.Burst => .48f, _ => 5f });
+            launchAt = Time.time + holdTime;
+            expires = launchAt + (mode switch { RockFlight.Launch => .65f, RockFlight.Burst => .48f, _ => 5f });
             planted = false;
-            rockHits = !rock ? 0 : mode is RockFlight.Falling or RockFlight.Skipping ? 5 : 3;
+            rockHits = !rock ? 0 : mode is RockFlight.Falling or RockFlight.Skipping or RockFlight.Mine ? 5 : 3;
             hitFlashUntil = 0;
             transform.localScale = sprite && !enemy ? Vector3.one * 1.65f : sprite ? Vector3.one * RockSizeMultiplier * (mode switch
             {
-                RockFlight.Falling => 1.55f,
+                RockFlight.Falling or RockFlight.Mine => 1.55f,
+                RockFlight.Rolling or RockFlight.AirHockey => 1.2f,
                 RockFlight.Skipping => 1.8f,
                 RockFlight.Crashing => 2.15f,
                 _ => .8f
@@ -66,7 +72,7 @@ namespace BossTemplate
                 : Quaternion.identity;
             surface.sprite = sprite ? sprite : defaultSprite;
             rockGroundOffset = (mode is RockFlight.Skipping or RockFlight.Crashing) && sprite
-                ? -sprite.bounds.min.y * transform.lossyScale.y : .25f * RockSizeMultiplier;
+                ? -sprite.bounds.min.y * transform.lossyScale.y : MineLandingOffset;
             surface.sortingOrder = defaultSortingOrder;
             surface.color = normalColor = sprite || !enemy ? Color.white : Color.red;
             shellSprite = shell;
@@ -75,6 +81,26 @@ namespace BossTemplate
                 rockShell.color = Color.white;
                 rockShell.enabled = false;
             }
+        }
+
+        internal void LaunchAirHockey(float duration, AudioClip bounceSound, int paddle)
+        {
+            hockeyBounceSound = bounceSound;
+            launchAt = Time.time;
+            expires = launchAt + duration;
+            Vector2 position = transform.position;
+            AimAirHockeyAtPlayer(position, paddle == 0 ? 1 : -1, velocity.magnitude, arena.Boss.AirHockeyCourt);
+            arena.Boss.RecordHockeyStrike(paddle);
+            arena.ShowHockeyImpact(position, velocity.normalized, hockeyBounceSound, paddle: true);
+        }
+
+        internal float PredictAirHockeyReturn(Rect court, out int receiver, out float seconds)
+        {
+            receiver = velocity.x > 0 ? 1 : 0;
+            float edge = receiver == 1 ? court.xMax : court.xMin;
+            seconds = Mathf.Max(0, (edge - transform.position.x) / velocity.x);
+            float projectedY = transform.position.y - court.yMin + velocity.y * seconds;
+            return court.yMin + Mathf.PingPong(projectedY, court.height);
         }
 
         internal void Strike()
@@ -95,6 +121,7 @@ namespace BossTemplate
         private void Update()
         {
             if (arena.Finished) { gameObject.SetActive(false); return; }
+            if (Time.time < launchAt) return;
             if (Planted)
             {
                 if (Time.time >= expires)
@@ -119,13 +146,18 @@ namespace BossTemplate
                 gameObject.SetActive(false);
                 return;
             }
+            if (flight == RockFlight.AirHockey)
+            {
+                UpdateAirHockey(Time.deltaTime);
+                return;
+            }
 
             Vector2 from = transform.position;
             float step = Time.deltaTime;
-            if (flight == RockFlight.Skipping) velocity.y -= RockGravity * step;
+            if (flight is RockFlight.Skipping or RockFlight.Mine) velocity.y -= RockGravity * step;
             Vector2 to = from + velocity * step;
             float floor = arena.GroundY + rockGroundOffset;
-            bool reachedFloor = (flight is RockFlight.Falling or RockFlight.Skipping or RockFlight.Crashing)
+            bool reachedFloor = (flight is RockFlight.Falling or RockFlight.Skipping or RockFlight.Crashing or RockFlight.Mine)
                 && velocity.y < 0 && to.y <= floor;
             if (reachedFloor)
                 to = Vector2.Lerp(from, to, Mathf.InverseLerp(from.y, to.y, floor));
@@ -141,7 +173,8 @@ namespace BossTemplate
                 else
                 {
                     Vector2 impact = new Vector2(to.x, arena.GroundY + .25f);
-                    if (flight == RockFlight.Crashing || Random.value >= arena.RockPlantChance || arena.Player.OverlapsPlantedRock(to.x))
+                    if (flight == RockFlight.Crashing || (flight != RockFlight.Mine && Random.value >= arena.RockPlantChance)
+                        || arena.Player.OverlapsPlantedRock(to.x))
                     {
                         arena.ShowRockBreak(impact, surface.bounds.size);
                         gameObject.SetActive(false);
@@ -158,8 +191,60 @@ namespace BossTemplate
                 }
             }
             transform.position = to;
-            if (flight == RockFlight.Skipping && (to.x < arena.GroundBounds.min.x || to.x > arena.GroundBounds.max.x))
+            if (flight == RockFlight.Rolling)
+                transform.Rotate(0, 0, -velocity.x * step * 105);
+            if ((flight is RockFlight.Skipping or RockFlight.Rolling) &&
+                (to.x < arena.GroundBounds.min.x || to.x > arena.GroundBounds.max.x))
                 gameObject.SetActive(false);
+        }
+
+        private void UpdateAirHockey(float deltaTime)
+        {
+            float speed = velocity.magnitude;
+            velocity *= Mathf.Min(AirHockeyMaxSpeed, speed + deltaTime * 1.25f) / speed;
+            Rect court = arena.Boss.AirHockeyCourt;
+            Vector2 position = transform.position;
+            position.x = Mathf.Clamp(position.x, court.xMin, court.xMax);
+            position.y = Mathf.Clamp(position.y, court.yMin, court.yMax);
+            float remaining = deltaTime;
+            for (int collision = 0; collision < 3 && remaining > 0; collision++)
+            {
+                float side = velocity.x > 0 ? court.xMax : court.xMin;
+                float wall = velocity.y > 0 ? court.yMax : court.yMin;
+                float timeToSide = (side - position.x) / velocity.x;
+                float timeToWall = velocity.y == 0 ? float.PositiveInfinity : (wall - position.y) / velocity.y;
+                float travel = Mathf.Clamp(Mathf.Min(timeToSide, timeToWall), 0, remaining);
+                Vector2 next = position + velocity * travel;
+                ResolveHit(position, next);
+                position = next;
+                remaining -= travel;
+                if (remaining <= 0) break;
+
+                bool paddle = timeToSide <= timeToWall;
+                if (paddle)
+                {
+                    position.x = side;
+                    float direction = -Mathf.Sign(velocity.x);
+                    AimAirHockeyAtPlayer(position, direction, Mathf.Min(AirHockeyMaxSpeed, velocity.magnitude + 1.4f), court);
+                    arena.Boss.RecordHockeyStrike(direction > 0 ? 0 : 1);
+                }
+                else
+                {
+                    position.y = wall;
+                    velocity.y = -velocity.y;
+                }
+                arena.ShowHockeyImpact(position, velocity.normalized, hockeyBounceSound, paddle);
+            }
+            transform.position = position;
+            transform.Rotate(0, 0, -deltaTime * velocity.x * 55);
+        }
+
+        private void AimAirHockeyAtPlayer(Vector2 position, float direction, float speed, Rect court)
+        {
+            Vector2 player = arena.Player.transform.position;
+            float inward = Mathf.Max(.75f, (player.x - position.x) * direction);
+            float targetY = Mathf.Clamp(player.y, court.yMin, court.yMax);
+            velocity = new Vector2(direction * inward, targetY - position.y).normalized * speed;
         }
 
         private void ShowRockShell()
@@ -191,7 +276,13 @@ namespace BossTemplate
             }
             else
             {
-                surface.color = flashing ? HitFlashColor : normalColor;
+                Color color = normalColor;
+                if (Time.time < launchAt)
+                {
+                    float pulse = Mathf.PingPong((launchAt - Time.time) * 5f, 1f);
+                    color = Color.Lerp(normalColor, new Color(1, .58f, .25f), pulse * .7f);
+                }
+                surface.color = flashing ? HitFlashColor : color;
             }
         }
 
@@ -200,6 +291,7 @@ namespace BossTemplate
             FighterHealth target = hostile ? arena.Player.Health : arena.Boss.Health;
             Vector2 targetPosition = target.transform.position;
             float targetTime;
+            int fist = -1;
             if (hostile && isRock)
             {
                 Bounds rockBounds = surface.bounds;
@@ -208,24 +300,35 @@ namespace BossTemplate
             }
             else
             {
-                targetTime = hostile || !arena.Boss.Hidden
-                    ? ContactTime(from, to, targetPosition, radius) : float.PositiveInfinity;
+                if (!hostile && arena.Boss.Phase == 2) targetTime = arena.Boss.FistContactTime(from, to, out fist);
+                else if (!hostile && !arena.Boss.CanBeHit) targetTime = float.PositiveInfinity;
+                else targetTime = ContactTime(from, to, targetPosition, radius);
             }
-            ArenaProjectile rock = arena.FirstRockOnPath(from, to, hostile, flight == RockFlight.Skipping, out float rockTime);
-            if (rock && rockTime <= targetTime)
+            if (!(flight is RockFlight.AirHockey or RockFlight.Rolling or RockFlight.Mine))
             {
-                rock.Strike();
-                if (flight == RockFlight.Skipping) return false;
-                gameObject.SetActive(false);
-                return true;
+                ArenaProjectile rock = arena.FirstRockOnPath(from, to, hostile, flight == RockFlight.Skipping, out float rockTime);
+                if (rock && rockTime <= targetTime)
+                {
+                    rock.Strike();
+                    if (flight == RockFlight.Skipping) return false;
+                    gameObject.SetActive(false);
+                    return true;
+                }
             }
             if (float.IsPositiveInfinity(targetTime)) return false;
 
+            if (fist >= 0)
+            {
+                arena.Boss.HitFist(fist, damage);
+                gameObject.SetActive(false);
+                return true;
+            }
             bool hit = target.Hit(damage, hostile ? .65f : 0);
             if (hostile)
             {
                 Vector2 impact = Vector2.Lerp(from, to, targetTime);
                 if (hit) arena.ShakeImpact(impact, velocity.normalized * .13f);
+                if (flight == RockFlight.AirHockey) return false;
                 if (isRock) arena.ShowRockBreak(impact, surface.bounds.size);
             }
             gameObject.SetActive(false);
@@ -234,7 +337,8 @@ namespace BossTemplate
 
         internal float BulletContactTime(Vector2 from, Vector2 to)
         {
-            if (!gameObject.activeSelf || !isRock) return float.PositiveInfinity;
+            if (!gameObject.activeSelf || !isRock || flight == RockFlight.AirHockey)
+                return float.PositiveInfinity;
 
             Bounds bounds = Planted
                 ? new Bounds(new Vector3(transform.position.x, arena.GroundY + PlantedHeight * .5f, 0),
@@ -243,7 +347,7 @@ namespace BossTemplate
             return BoundsContactTime(bounds, from, to);
         }
 
-        private static float BoundsContactTime(Bounds bounds, Vector2 from, Vector2 to)
+        internal static float BoundsContactTime(Bounds bounds, Vector2 from, Vector2 to)
         {
             bounds.center = (Vector2)bounds.center;
             if (bounds.Contains(from)) return 0;

@@ -14,7 +14,8 @@ namespace BossTemplate
         [Header("재사용 대기시간(초): 대시 / 사격 / 궁극기")]
         [SerializeField, InspectorName("재사용 대기시간")] private float[] cooldowns = { .65f, .1f, 4 };
         [Header("재장전")]
-        [SerializeField, Min(1), InspectorName("탄창 크기")] private int magazineSize = 12;
+        [SerializeField, InspectorName("탄창 사용")] private bool useMagazine = true;
+        [SerializeField, Min(1), InspectorName("탄창 크기")] private int magazineSize = 40;
         [SerializeField, Min(.1f), InspectorName("재장전 시간")] private float reloadDuration = .9f;
         [Header("효과음")]
         [SerializeField, InspectorName("점프")] private AudioClip jumpSound;
@@ -25,6 +26,8 @@ namespace BossTemplate
         [SerializeField, InspectorName("원거리 사격")] private AudioClip shotSound;
         [SerializeField, InspectorName("재장전")] private AudioClip reloadSound;
         [SerializeField, InspectorName("궁극기")] private AudioClip burstSound;
+        [SerializeField, InspectorName("일반 탄환 스프라이트")] private Sprite bulletSprite;
+        [SerializeField, InspectorName("궁극기 탄환 스프라이트")] private Sprite burstBulletSprite;
         private readonly float[] ready = new float[3];
         private BossArena arena;
         private float vertical;
@@ -42,6 +45,8 @@ namespace BossTemplate
         private bool grounded;
         private ArenaPlatform standingPlatform, ignoredPlatform;
         public FighterHealth Health { get; private set; }
+        internal Vector2 HurtboxHalfSize => halfSize;
+        public bool UsesMagazine => useMagazine;
         public int MagazineSize => Mathf.Max(1, magazineSize);
         public int RoundsRemaining { get; private set; }
         public float Cooldown(int index) => Mathf.Max(0, ready[index] - Time.time);
@@ -101,14 +106,13 @@ namespace BossTemplate
             bool dashing = dashRemaining > 0;
             Move(axis, jump, down && !dashing, Time.deltaTime);
             if (visuals) visuals.SetState(dashing ? facing : axis, grounded, vertical, facing, false);
-            if (RoundsRemaining == 0 && Time.time >= reloadUntil) RoundsRemaining = MagazineSize;
+            if (useMagazine && RoundsRemaining == 0 && Time.time >= reloadUntil) RoundsRemaining = MagazineSize;
             bool mouseShot = Mouse.current != null && Mouse.current.leftButton.isPressed;
-            if ((k.enterKey.isPressed || mouseShot) && RoundsRemaining > 0 && Use(1)
+            if ((k.enterKey.isPressed || mouseShot) && (!useMagazine || RoundsRemaining > 0) && Use(1)
                 && Shoot(new Vector2(facing * 15, 0), 7))
             {
                 arena.PlayEffect(shotSound);
-                RoundsRemaining--;
-                if (RoundsRemaining == 0)
+                if (useMagazine && --RoundsRemaining == 0)
                 {
                     reloadUntil = Time.time + Mathf.Max(.1f, reloadDuration);
                     arena.PlayEffect(reloadSound);
@@ -117,14 +121,15 @@ namespace BossTemplate
             if (k.backslashKey.wasPressedThisFrame && Use(2))
             {
                 arena.PlayEffect(burstSound);
-                for (int i = -2; i <= 2; i++) Shoot(new Vector2(facing * 12, i * 2), 15);
+                for (int i = -2; i <= 2; i++) Shoot(new Vector2(facing * 12, i * 2), 15, burstBulletSprite);
             }
         }
 
         private void Move(float axis, bool jump, bool down, float deltaTime)
         {
+            const float fastFallSpeed = 18f;
             if (dashRemaining <= 0 && axis != 0) facing = axis > 0 ? 1 : -1;
-            bool nextCrouch = down && grounded && !jump;
+            bool nextCrouch = down && !jump;
             if (nextCrouch != crouching)
             {
                 float height = standingHalfSize.y * (nextCrouch ? 2f / 3 : 1);
@@ -132,7 +137,7 @@ namespace BossTemplate
                 halfSize.y = height; crouching = nextCrouch;
             }
             if (visuals) visuals.SetCrouching(crouching);
-            if (crouching) axis = 0;
+            if (crouching && grounded) axis = 0;
             if (jump && down && grounded && arena.CanDropThrough(standingPlatform))
             {
                 // 현재 발판만 무시하므로 바로 아래 발판이나 바닥에는 정상 착지합니다.
@@ -147,7 +152,7 @@ namespace BossTemplate
                 arena.PlayEffect(jumps == 2 ? doubleJumpSound : jumpSound);
                 if (jumps == 2) arena.DoubleJumpFlash((Vector2)transform.position - Vector2.up * halfSize.y);
             }
-            if (down && !grounded) vertical -= gravity * deltaTime;
+            if (crouching && !grounded) vertical = Mathf.Min(vertical, -fastFallSpeed);
             Vector3 previous = transform.position;
             Vector3 position = previous;
             float dashStep = Mathf.Min(dashRemaining, deltaTime);
@@ -174,11 +179,11 @@ namespace BossTemplate
         }
 
         private bool Use(int i) { if (Time.time < ready[i]) return false; ready[i] = Time.time + cooldowns[i]; return true; }
-        private bool Shoot(Vector2 velocity, float damage)
+        private bool Shoot(Vector2 velocity, float damage, Sprite sprite = null)
         {
-            Vector2 muzzle = visuals ? new Vector2(facing * 1.1f, crouching ? .32f : .62f) : Vector2.right * facing * .7f;
+            Vector2 muzzle = new Vector2(facing * (visuals ? 1.1f : .7f), crouching ? .32f : .62f);
             Vector2 origin = (Vector2)transform.position + muzzle;
-            if (!arena.SpawnProjectile(origin, velocity, damage, false)) return false;
+            if (!arena.SpawnProjectile(origin, velocity, damage, false, sprite ? sprite : bulletSprite)) return false;
             if (visuals) visuals.Fire();
             if (lastMuzzleFrame != Time.frameCount)
             {

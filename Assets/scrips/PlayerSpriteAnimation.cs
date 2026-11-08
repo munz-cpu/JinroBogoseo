@@ -40,7 +40,7 @@ namespace BossTemplate
         private void LateUpdate()
         {
             bool shooting = !dead && Time.time < firedUntil;
-            if (crouching && grounded && !dead)
+            if (crouching && !dead)
             {
                 body.enabled = true; torso.enabled = legs.enabled = false;
                 body.flipX = facing < 0;

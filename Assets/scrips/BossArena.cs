@@ -25,13 +25,15 @@ namespace BossTemplate
         [SerializeField, InspectorName("점프 링 메시")] private Mesh jumpRingMesh;
         [Header("낙석")]
         [SerializeField, InspectorName("돌 스프라이트")] private Sprite rockSprite;
-        [SerializeField, InspectorName("낙석 외형 세트")] private RockAppearance[] fallingRocks;
+        [SerializeField, InspectorName("돌 외형 세트")] private RockAppearance[] fallingRocks;
         [SerializeField, Range(0, 1), InspectorName("바닥에 박힐 확률")] private float rockPlantChance = .45f;
         [SerializeField, Min(.1f), InspectorName("폭발까지 걸리는 시간")] private float rockFuse = 4;
-        [SerializeField, InspectorName("돌 폭발")] private AudioClip rockExplosionSound;
+        [SerializeField, InspectorName("돌 폭발 효과음")] private AudioClip rockExplosionSound;
+        [SerializeField, InspectorName("낙석 착지 효과음")] private AudioClip rockLandingSound;
         [SerializeField, Range(0, 2), InspectorName("충돌 화면 흔들림")] private float shakeStrength = 1;
         private Vector3 playerStart, bossStart;
         private AudioSource effectsAudio;
+        private Mesh rockDustMesh;
         private CinemachineBrain cameraBrain;
         private CinemachineVirtualCameraBase shakeCamera;
         private readonly CinemachineImpulseDefinition impactImpulse = new CinemachineImpulseDefinition
@@ -102,6 +104,7 @@ namespace BossTemplate
         }
         private void Awake()
         {
+            rockDustMesh = CreateRockDustMesh();
             if (arenaCamera) cameraBrain = arenaCamera.GetComponent<CinemachineBrain>();
             playerStart = player.transform.position; bossStart = boss.transform.position;
             Player.Initialize(this); Boss.Initialize(this);
@@ -109,6 +112,8 @@ namespace BossTemplate
             Boss.Health.InitializeAudio(this);
             ResetFight();
         }
+
+        private void OnDestroy() => Destroy(rockDustMesh);
 
         internal void ShakeImpact(Vector2 position, Vector2 impulse)
         {
@@ -166,6 +171,13 @@ namespace BossTemplate
             }
             return null;
         }
+        internal void ShowNovaPulse(Vector2 position, float lifetime, bool charging)
+        {
+            var color = charging ? new Color(.65f, .42f, 1) : new Color(.9f, .7f, 1);
+            Burst(jumpRingMesh, position, Vector2.one * (charging ? 4 : 1.4f), color,
+                lifetime, Vector2.zero, charging ? .35f : 3.6f);
+        }
+
         private void Burst(Mesh mesh, Vector2 position, Vector2 size, Color color, float lifetime,
             Vector2 velocity, float endScale, float angle = 0)
         {
@@ -177,6 +189,48 @@ namespace BossTemplate
                 return;
             }
         }
+        internal void ShowRockBreak(Vector2 position, Vector2 size)
+        {
+            PlayEffect(rockExplosionSound);
+            Burst(rockDustMesh, position, size, new Color(.79f, .68f, .53f), .42f,
+                Vector2.up * .85f, 2.6f);
+        }
+
+        internal void ShowRockLandingDust(Vector2 position, float width, bool playSound = true)
+        {
+            if (playSound) PlayEffect(rockLandingSound);
+            Burst(rockDustMesh, position, new Vector2(width, .55f), new Color(.79f, .68f, .53f, .8f),
+                .3f, Vector2.up * .65f, 2f);
+        }
+
+        private static Mesh CreateRockDustMesh()
+        {
+            // One pooled mesh draws the whole burst, leaving room for attack warnings.
+            const int particleCount = 20;
+            var vertices = new Vector3[particleCount * 4];
+            var triangles = new int[particleCount * 6];
+            for (int i = 0; i < particleCount; i++)
+            {
+                float angle = i * 2.4f;
+                float distance = Mathf.Sqrt((i + .5f) / particleCount) * .45f;
+                var center = new Vector3(Mathf.Cos(angle) * distance, Mathf.Sin(angle) * distance, 0);
+                float halfSize = .015f + (i % 4) * .008f;
+                int v = i * 4;
+                vertices[v] = center + new Vector3(-halfSize, -halfSize, 0);
+                vertices[v + 1] = center + new Vector3(-halfSize, halfSize, 0);
+                vertices[v + 2] = center + new Vector3(halfSize, halfSize, 0);
+                vertices[v + 3] = center + new Vector3(halfSize, -halfSize, 0);
+                int t = i * 6;
+                triangles[t] = v;
+                triangles[t + 1] = v + 1;
+                triangles[t + 2] = v + 2;
+                triangles[t + 3] = v;
+                triangles[t + 4] = v + 2;
+                triangles[t + 5] = v + 3;
+            }
+            return new Mesh { name = "Rock Dust", vertices = vertices, triangles = triangles };
+        }
+
         public void GunFlash(Vector2 muzzle, int facing)
         {
             Burst(sparkMesh, muzzle + Vector2.right * facing * .14f, new Vector2(.65f, .35f),
@@ -192,40 +246,42 @@ namespace BossTemplate
                 Burst(sparkMesh, feet + new Vector2(i * .2f, -.1f), new Vector2(.12f, .28f),
                     new Color(.7f, .95f, 1), .25f, new Vector2(i * 2, -2), .1f, i * 25);
         }
-        public bool SpawnProjectile(Vector2 position, Vector2 velocity, float damage, bool hostile)
-            => SpawnProjectile(position, velocity, damage, hostile, null, null, RockFlight.Straight);
+        public bool SpawnProjectile(Vector2 position, Vector2 velocity, float damage, bool hostile, Sprite sprite = null)
+            => SpawnProjectile(position, velocity, damage, hostile, sprite, null, RockFlight.Straight);
 
         internal void SpawnRock(Vector2 position, Vector2 velocity, float damage, RockFlight flight = RockFlight.Straight)
         {
             RockAppearance appearance = default;
-            if (flight == RockFlight.Falling && fallingRocks != null && fallingRocks.Length > 0)
+            if (fallingRocks != null && fallingRocks.Length > 0)
                 appearance = fallingRocks[Random.Range(0, fallingRocks.Length)];
             SpawnProjectile(position, velocity, damage, true, appearance.solid ? appearance.solid : rockSprite,
-                appearance.solid ? appearance.shell : null, flight);
+                flight == RockFlight.Falling && appearance.solid ? appearance.shell : null, flight, true);
         }
 
         private bool SpawnProjectile(Vector2 position, Vector2 velocity, float damage, bool hostile,
-            Sprite sprite, Sprite shell, RockFlight flight)
+            Sprite sprite, Sprite shell, RockFlight flight, bool rock = false)
         {
             foreach (var item in projectiles)
             {
                 if (item.gameObject.activeSelf) continue;
                 item.transform.position = position;
-                item.Initialize(this, velocity, damage, hostile, sprite, shell, flight);
+                item.Initialize(this, velocity, damage, hostile, sprite, shell, flight, rock);
                 item.gameObject.SetActive(true);
                 return true;
             }
             return false;
         }
 
-        internal ArenaProjectile FirstRockOnPath(Vector2 from, Vector2 to, bool skipping, out float time)
+        internal ArenaProjectile FirstRockOnPath(Vector2 from, Vector2 to, bool hostile, bool skipping, out float time)
         {
             time = float.PositiveInfinity;
             ArenaProjectile nearest = null;
             foreach (var item in projectiles)
             {
-                if (!item.Planted) continue;
-                float contact = ArenaProjectile.ContactTime(from, to, item.transform.position, .8f);
+                if (hostile && !item.Planted) continue;
+                float contact = hostile
+                    ? ArenaProjectile.ContactTime(from, to, item.transform.position, ArenaProjectile.PlantedHitRadius)
+                    : item.BulletContactTime(from, to);
                 if (contact >= time || skipping && contact == 0) continue;
                 nearest = item;
                 time = contact;
@@ -233,22 +289,18 @@ namespace BossTemplate
             return nearest;
         }
 
-        internal bool StrikeRocks(Vector2 from, Vector2 to, float radius, int strike = 0)
-        {
-            bool hit = false;
-            foreach (var item in projectiles)
-                if (item.Planted && !float.IsPositiveInfinity(
-                    ArenaProjectile.ContactTime(from, to, item.transform.position, radius))) hit |= item.Strike(strike);
-            return hit;
-        }
-
         internal void ExplodeRock(Vector2 center, float radius)
         {
             ShakeImpact(center, Vector2.down * .25f);
-            PlayEffect(rockExplosionSound);
-            Flash(center, Vector2.one * (radius * 2), new Color(1, .28f, .12f, .65f), .22f);
-            Burst(sparkMesh, center, Vector2.one, new Color(1, .55f, .15f), .25f, Vector2.zero, radius * 2);
-            if (Vector2.Distance(center, Player.transform.position) <= radius) Player.Health.Hit(20, .65f);
+            Flash(center, Vector2.one * (radius * 2), new Color(1, .28f, .12f, .42f), .12f);
+            ShowRockBreak(center + Vector2.up * .3f, new Vector2(radius * 1.35f, radius));
+            var origin = new Vector2(center.x, GroundY + .9f);
+            for (int shard = 0; shard < 5; shard++)
+            {
+                float angle = shard * Mathf.PI / 4;
+                var direction = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+                SpawnRock(origin + direction * .25f, direction * 6, 20, RockFlight.Burst);
+            }
         }
     }
 }

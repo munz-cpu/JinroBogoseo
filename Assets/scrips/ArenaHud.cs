@@ -8,15 +8,20 @@ namespace BossTemplate
         [SerializeField, InspectorName("탄창 표시")] private Text ammo;
         [SerializeField, InspectorName("플레이어 체력바")] private Slider playerHealth;
         [SerializeField, InspectorName("전투 결과")] private Text result;
-        private int displayedRounds = -1, displayedCapacity;
+        private int displayedRounds = -2, displayedCapacity;
         private void Update()
         {
             UpdateHealthBar(playerHealth, arena.Player.Health);
-            int rounds = arena.Player.RoundsRemaining;
+            int rounds = arena.Player.UsesMagazine ? arena.Player.RoundsRemaining : -1;
             int capacity = arena.Player.MagazineSize;
             if (ammo && (rounds != displayedRounds || capacity != displayedCapacity))
             {
-                ammo.text = rounds == 0 ? "재장전 중" : $"탄약 {rounds} / {capacity}";
+                ammo.text = rounds switch
+                {
+                    -1 => "탄약 무제한",
+                    0 => "재장전 중",
+                    _ => $"탄약 {rounds} / {capacity}"
+                };
                 displayedRounds = rounds;
                 displayedCapacity = capacity;
             }

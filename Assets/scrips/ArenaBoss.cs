@@ -16,16 +16,14 @@ namespace BossTemplate
         [SerializeField, InspectorName("지면 강타 충격")] private AudioClip slamSound;
         [SerializeField, InspectorName("돌진 예고")] private AudioClip dashWarningSound;
         [SerializeField, InspectorName("돌진 시작")] private AudioClip dashSound;
-        [SerializeField, InspectorName("연속 주먹 예고")] private AudioClip punchWarningSound;
-        [SerializeField, InspectorName("주먹 타격")] private AudioClip punchSound;
+        [SerializeField, InspectorName("지면 균열 타격")] private AudioClip fissureSound;
         [SerializeField, InspectorName("낙석 예고")] private AudioClip rainWarningSound;
         [SerializeField, InspectorName("낙석 발사")] private AudioClip rainLaunchSound;
         [SerializeField, InspectorName("물수제비 예고")] private AudioClip skipWarningSound;
         [SerializeField, InspectorName("물수제비 발사")] private AudioClip skipSound;
         [SerializeField, InspectorName("내려찍기 순간이동")] private AudioClip vanishSound;
         private const float FramesPerSecond = 12;
-        private const float CloseRange = 5.5f;
-        private int nextStrike;
+        private bool pauseRain;
         internal bool Hidden { get; private set; }
         private BossArena arena;
         private SpriteRenderer body;
@@ -56,10 +54,11 @@ namespace BossTemplate
         {
             StopAllCoroutines(); body.color = baseColor; Intent = "전투 준비";
             SetHidden(false);
-            nextStrike = 0;
+            pauseRain = false;
             Face(arena.Player.transform.position.x - transform.position.x);
             PlayMotion(idleFrames, loop: true);
             StartCoroutine(Fight());
+            StartCoroutine(RainWaves());
         }
 
         private void Face(float horizontal)
@@ -101,27 +100,30 @@ namespace BossTemplate
 
         private IEnumerator Fight()
         {
-            yield return new WaitForSeconds(1.5f);
-            int nextPattern = 0;
+            yield return new WaitForSeconds(1f);
+            int nextPhaseOnePattern = 0;
+            int nextPhaseTwoPattern = 0;
             while (!arena.Finished)
             {
-                int pattern = nextPattern++ % 6;
-                bool close = Mathf.Abs(PlayerPosition.x - transform.position.x) < CloseRange;
-                if ((pattern == 0 && close) || (pattern == 1 && !close)) continue;
-
+                int pattern = Enraged ? 5 + nextPhaseTwoPattern++ % 4 : nextPhaseOnePattern++ % 9;
+                pauseRain = pattern < 5;
                 switch (pattern)
                 {
-                    case 0: yield return Dash(); break;
-                    case 1: yield return PunchCombo(); break;
-                    case 2: yield return RockRain(); break;
-                    case 3: yield return Spread(); break;
-                    case 4: yield return SkippingRocks(); break;
-                    case 5: yield return TeleportSlam(); break;
+                    case 0: yield return GroundBarrage(); break;
+                    case 1: yield return FaultLine(); break;
+                    case 2: yield return Crossfire(); break;
+                    case 3: yield return CeilingCollapse(); break;
+                    case 4: yield return StoneNova(); break;
+                    case 5: yield return Dash(); break;
+                    case 6: yield return Spread(); break;
+                    case 7: yield return SkippingRocks(); break;
+                    case 8: yield return TeleportSlam(); break;
                 }
+                pauseRain = false;
                 if (arena.Finished) break;
                 PlayMotion(idleFrames, loop: true);
                 Intent = "다음 공격 준비";
-                yield return new WaitForSeconds(attackInterval);
+                yield return new WaitForSeconds(attackInterval * (Enraged ? .25f : .45f));
             }
             Intent = "전투 종료";
             if (!Health.Dead) PlayMotion(idleFrames, loop: true);
@@ -129,6 +131,7 @@ namespace BossTemplate
 
         private Vector2 PlayerPosition => arena.Player.transform.position;
         private float StandingY => arena.GroundY + body.bounds.extents.y;
+        internal float ProjectileHitRadius => body.bounds.extents.x * 1.35f;
         private float DirectionToPlayer => PlayerPosition.x < transform.position.x ? -1 : 1;
 
         private float ClampX(float x)
@@ -167,74 +170,216 @@ namespace BossTemplate
                 yield return null;
             }
             float destination = ClampX(transform.position.x + direction * arena.GroundBounds.size.x);
-            float start = transform.position.x;
-            arena.Flash(new Vector2((start + destination) / 2, arena.GroundY + .55f),
-                new Vector2(Mathf.Abs(destination - start), 1.1f), new Color(1, .65f, .2f, .26f), warningTime);
+            float y = arena.GroundY + .95f;
+            float launchX = transform.position.x + direction * body.bounds.extents.x;
+            arena.Flash(new Vector2((launchX + destination) * .5f, y),
+                new Vector2(Mathf.Abs(destination - launchX), .24f), new Color(1, .65f, .2f, .45f), warningTime);
             yield return new WaitForSeconds(warningTime);
             if (arena.Finished) yield break;
 
             Intent = "돌진";
             arena.PlayEffect(dashSound);
             PlayMotion(idleFrames, speed: 2, loop: true);
-            int strike = ++nextStrike;
+            arena.SpawnRock(new Vector2(launchX, y), Vector2.right * direction * 28, 20);
             while (!arena.Finished && !Mathf.Approximately(transform.position.x, destination))
             {
-                Vector2 previous = transform.position;
-                Vector2 next = new Vector2(Mathf.MoveTowards(previous.x, destination, Time.deltaTime * 27), StandingY);
+                Vector2 next = new Vector2(Mathf.MoveTowards(transform.position.x, destination, Time.deltaTime * 27), StandingY);
                 transform.position = next;
-                bool hitRock = arena.StrikeRocks(previous + Vector2.down, next + Vector2.down, 1.4f, strike);
-                bool hitPlayer = !float.IsPositiveInfinity(ArenaProjectile.ContactTime(previous, next, PlayerPosition, 1.65f))
-                    && arena.Player.Health.Hit(20, .8f);
-                if (hitRock || hitPlayer || next.x == destination)
+                if (next.x == destination)
                     arena.ShakeImpact(next, Vector2.right * direction * .23f);
                 yield return null;
             }
         }
 
-        private IEnumerator PunchCombo()
+        private IEnumerator GroundBarrage()
         {
-            Warn("연속 주먹 준비", punchWarningSound, new Vector2(-.22f, .08f), 21, warningTime * .6f);
-            yield return new WaitForSeconds(warningTime * .6f);
-            for (int i = 0; i < 5 && !arena.Finished; i++)
+            float direction = DirectionToPlayer;
+            float start = transform.position.x + direction * body.bounds.extents.x;
+            float edge = direction < 0 ? arena.GroundBounds.min.x : arena.GroundBounds.max.x;
+            float y = arena.GroundY + .95f;
+            Warn("저공 돌탄 예고", spreadWarningSound, new Vector2(-.18f, -.12f), 12, warningTime);
+            arena.Flash(new Vector2((start + edge) * .5f, y), new Vector2(Mathf.Abs(edge - start), .2f),
+                new Color(1, .65f, .2f, .55f), warningTime);
+            yield return new WaitForSeconds(warningTime);
+
+            for (int shot = 0; shot < 3 && !arena.Finished; shot++)
             {
-                float direction = DirectionToPlayer;
-                Face(direction);
-                PlayMotion(slamFrames, speed: 3);
-                yield return new WaitForSeconds(.10f);
+                Intent = "저공 돌탄";
+                PlayMotion(shootFrames);
+                arena.PlayEffect(spreadSound);
+                arena.SpawnRock(new Vector2(start, y), Vector2.right * direction * 15, 14);
+                yield return new WaitForSeconds(.24f);
+            }
+        }
+
+        private IEnumerator FaultLine()
+        {
+            const int columns = 5;
+            const float spacing = 2.5f;
+            const float interval = .18f;
+            float left = arena.GroundBounds.min.x + 1.25f;
+            float right = arena.GroundBounds.max.x - 1.25f;
+            float start = Mathf.Clamp(PlayerPosition.x - 2 * spacing, left, right - (columns - 1) * spacing);
+            float direction = DirectionToPlayer;
+            if (direction < 0) start += (columns - 1) * spacing;
+            Warn("지면 균열 예고", slamWarningSound, new Vector2(0, .18f), 14, warningTime);
+            for (int i = 0; i < columns; i++)
+            {
+                float x = start + i * spacing * direction;
+                arena.Flash(new Vector2(x, arena.GroundY + .14f), new Vector2(2.2f, .28f),
+                    new Color(1, .34f, .12f, .65f), warningTime + i * interval);
+            }
+            yield return new WaitForSeconds(warningTime);
+            if (arena.Finished) yield break;
+
+            Intent = "지면 균열";
+            PlayMotion(slamFrames);
+            for (int i = 0; i < columns && !arena.Finished; i++)
+            {
+                float x = start + i * spacing * direction;
+                var impact = new Vector2(x, arena.GroundY + .25f);
+                arena.PlayEffect(fissureSound);
+                arena.ShowRockLandingDust(impact, 1.8f, playSound: false);
+                arena.SpawnRock(impact, Vector2.up * 7, 15, RockFlight.Burst);
+                arena.ShakeImpact(impact, Vector2.down * .11f);
+                yield return new WaitForSeconds(interval);
+            }
+        }
+
+        private IEnumerator Crossfire()
+        {
+            float center = Mathf.Clamp(PlayerPosition.x, arena.GroundBounds.min.x + 7, arena.GroundBounds.max.x - 7);
+            Warn("양옆 협공 예고", dashWarningSound, new Vector2(0, -.15f), -15, warningTime);
+            for (int wave = 0; wave < 2 && !arena.Finished; wave++)
+            {
+                float lead = wave == 0 ? warningTime : .62f;
+                float y = arena.GroundY + (wave == 0 ? .95f : 2.9f);
+                var left = new Vector2(center - 7, y);
+                var right = new Vector2(center + 7, y);
+                var laneColor = new Color(1, .74f, .2f, .48f);
+                arena.Flash((left + right) * .5f, new Vector2(14, .16f), laneColor, lead);
+                arena.Flash(left, Vector2.one * 1.15f, laneColor, lead);
+                arena.Flash(right, Vector2.one * 1.15f, laneColor, lead);
+                yield return new WaitForSeconds(lead);
                 if (arena.Finished) yield break;
-                Intent = $"연속 주먹 {i + 1}/5";
-                arena.PlayEffect(punchSound);
-                Vector2 origin = (Vector2)transform.position + Vector2.right * direction * .7f;
-                Vector2 end = origin + Vector2.right * direction * 3;
-                arena.Flash((origin + end) / 2, new Vector2(3, 1.45f), new Color(.92f, .7f, .45f, .6f), .09f);
-                arena.StrikeRocks(origin + Vector2.down, end + Vector2.down, .85f);
-                if (!float.IsPositiveInfinity(ArenaProjectile.ContactTime(origin, end, PlayerPosition, 1))
-                    && arena.Player.Health.Hit(8, .09f))
-                    arena.ShakeImpact(PlayerPosition, Vector2.right * direction * .095f);
-                yield return new WaitForSeconds(.09f);
+
+                Intent = wave == 0 ? "협공 · 하단" : "협공 · 상단";
+                PlayMotion(shootFrames);
+                arena.PlayEffect(skipSound);
+                arena.SpawnRock(left, Vector2.right * 12, 13);
+                arena.SpawnRock(right, Vector2.left * 12, 13);
+                yield return new WaitForSeconds(.5f);
+            }
+        }
+
+        private IEnumerator CeilingCollapse()
+        {
+            const float spacing = 2.9f;
+            const float height = 13;
+            const float speed = 12;
+            float center = Mathf.Clamp(PlayerPosition.x, arena.GroundBounds.min.x + 7, arena.GroundBounds.max.x - 7);
+            int safeLane = DirectionToPlayer < 0 ? -1 : 1;
+            Warn("천장 붕괴 예고", rainWarningSound, new Vector2(0, .24f), -20, warningTime);
+            for (int lane = -2; lane <= 2; lane++)
+            {
+                if (lane == safeLane) continue;
+                float x = center + lane * spacing;
+                arena.Flash(new Vector2(x, arena.GroundY + .16f), new Vector2(1.95f, .32f),
+                    new Color(.8f, .4f, 1, .7f), warningTime + height / speed);
+            }
+            yield return new WaitForSeconds(warningTime);
+            if (arena.Finished) yield break;
+
+            Intent = "천장 붕괴";
+            PlayMotion(shootFrames);
+            arena.PlayEffect(rainLaunchSound);
+            for (int lane = -2; lane <= 2; lane++)
+            {
+                if (lane == safeLane) continue;
+                float x = center + lane * spacing;
+                arena.SpawnRock(new Vector2(x, arena.GroundY + height), Vector2.down * speed, 14, RockFlight.Falling);
+            }
+            yield return new WaitForSeconds(height / speed);
+        }
+
+        private IEnumerator StoneNova()
+        {
+            Vector2 origin = transform.position;
+            Vector2 gap = PlayerPosition - origin;
+            float angle = gap.sqrMagnitude > .01f ? Mathf.Atan2(gap.y, gap.x) : 0;
+            Warn("원형 파편 예고", spreadWarningSound, new Vector2(0, .14f), 0, warningTime);
+            arena.ShowNovaPulse(origin, warningTime, charging: true);
+            var escape = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+            for (int marker = 1; marker <= 3; marker++)
+            {
+                Vector2 point = origin + escape * (marker * 1.35f);
+                if (point.y > arena.GroundY && point.x > arena.GroundBounds.min.x && point.x < arena.GroundBounds.max.x)
+                    arena.Flash(point, Vector2.one * .22f, new Color(.45f, 1, .8f, .85f), warningTime);
+            }
+            yield return new WaitForSeconds(warningTime);
+            if (arena.Finished) yield break;
+
+            Intent = "원형 파편";
+            PlayMotion(shootFrames);
+            arena.PlayEffect(spreadSound);
+            arena.ShowNovaPulse(origin, .28f, charging: false);
+            for (int spoke = 2; spoke <= 10; spoke++)
+            {
+                float heading = angle + spoke * Mathf.PI / 6;
+                var direction = new Vector2(Mathf.Cos(heading), Mathf.Sin(heading));
+                arena.SpawnRock(origin + direction * .8f, direction * 9, 12);
+            }
+            yield return new WaitForSeconds(.65f);
+        }
+
+        private IEnumerator RainWaves()
+        {
+            // Only the foreground attack can move, face, or animate the boss.
+            yield return new WaitForSeconds(1.25f);
+            while (!arena.Finished)
+            {
+                if (pauseRain)
+                {
+                    yield return null;
+                    continue;
+                }
+                yield return RockRain();
+                if (arena.Finished) yield break;
+                yield return new WaitForSeconds(Enraged ? 1.75f : 2.9f);
             }
         }
 
         private IEnumerator RockRain()
         {
+            const float launchLead = .35f;
             const float fallHeight = 16;
             const float fallSpeed = 11;
-            Warn("낙석 준비", rainWarningSound, new Vector2(0, .22f), 24, warningTime);
-            yield return new WaitForSeconds(warningTime);
-            if (arena.Finished) yield break;
-            Intent = "낙석";
-            PlayMotion(shootFrames);
+            arena.PlayEffect(rainWarningSound);
+            yield return new WaitForSeconds(launchLead);
+            if (arena.Finished || pauseRain) yield break;
             arena.PlayEffect(rainLaunchSound);
-            arena.SpawnRock((Vector2)transform.position + Vector2.up, Vector2.up * 25, 0, RockFlight.Launch);
-            yield return new WaitForSeconds(.65f);
-            float center = PlayerPosition.x;
-            for (int i = 0; i < 9 && !arena.Finished; i++)
+            if (!Hidden)
+                arena.SpawnRock((Vector2)transform.position + Vector2.up, Vector2.up * 25, 0, RockFlight.Launch);
+            int rockCount = Enraged ? 7 : 5;
+            float rockInterval = Enraged ? .23f : .32f;
+            float left = ClampX(float.NegativeInfinity);
+            float right = ClampX(float.PositiveInfinity);
+            float spacing = Mathf.Min(4, (right - left) / rockCount);
+            float halfSpan = spacing * rockCount / 2;
+            float center = Mathf.Clamp(PlayerPosition.x, left + halfSpan, right - halfSpan);
+            var positions = new float[rockCount];
+            for (int i = 0; i < rockCount; i++)
+                positions[i] = center + (i - (rockCount - 1) * .5f + Random.Range(-.1f, .1f)) * spacing;
+
+            for (int i = 0; i < rockCount && !arena.Finished && !pauseRain; i++)
             {
-                float x = ClampX(center + Random.Range(-9f, 9f));
+                int selected = Random.Range(i, rockCount);
+                float x = positions[selected];
+                positions[selected] = positions[i];
                 arena.Flash(new Vector2(x, arena.GroundY + .1f), new Vector2(1.35f, .2f),
                     new Color(1, .45f, .2f, .65f), fallHeight / fallSpeed);
                 arena.SpawnRock(new Vector2(x, arena.GroundY + fallHeight), Vector2.down * fallSpeed, 14, RockFlight.Falling);
-                yield return new WaitForSeconds(.12f);
+                if (i < rockCount - 1) yield return new WaitForSeconds(rockInterval);
             }
         }
 
@@ -255,10 +400,10 @@ namespace BossTemplate
                 if (aim == Vector2.zero) aim = Vector2.right * DirectionToPlayer;
                 for (int i = -2; i <= 2; i++)
                 {
-                    Vector2 direction = Quaternion.Euler(0, 0, i * 13) * aim;
+                    Vector2 direction = Quaternion.Euler(0, 0, i * 23) * aim;
                     arena.SpawnRock(origin, direction * 8, 11);
                 }
-                yield return new WaitForSeconds(.26f);
+                if (volley < 3) yield return new WaitForSeconds(Enraged ? .29f : .43f);
             }
         }
 
@@ -276,12 +421,14 @@ namespace BossTemplate
                 if (arena.Finished) yield break;
                 arena.PlayEffect(skipSound);
                 arena.SpawnRock(transform.position, new Vector2(direction * 4.5f, 3.5f), 12, RockFlight.Skipping);
-                if (i < 4) yield return new WaitForSeconds(.74f);
+                if (i < 4) yield return new WaitForSeconds(Enraged ? .63f : .87f);
             }
         }
 
         private IEnumerator TeleportSlam()
         {
+            const float hoverTime = .8f;
+            const float fallSpeed = 27f;
             Warn("순간이동 준비", slamWarningSound, new Vector2(0, .35f), 0, warningTime * .5f);
             yield return new WaitForSeconds(warningTime * .5f);
             if (arena.Finished) yield break;
@@ -295,18 +442,20 @@ namespace BossTemplate
             float x = ClampX(PlayerPosition.x);
             float floor = StandingY;
             transform.position = new Vector2(x, Mathf.Max(floor + 5, PlayerPosition.y + 4));
-            Intent = "내려찍기";
-            PlayMotion(slamFrames);
+            Intent = "내려찍기 예고";
             arena.Flash(new Vector2(x, arena.GroundY + 2), new Vector2(3, 4),
-                new Color(1, .24f, .25f, .28f), .65f);
-            yield return new WaitForSeconds(.3f);
+                new Color(1, .24f, .25f, .28f), hoverTime + (transform.position.y - floor) / fallSpeed);
+            yield return new WaitForSeconds(hoverTime);
+            if (!arena.Finished)
+            {
+                Intent = "내려찍기";
+                PlayMotion(slamFrames);
+                arena.SpawnRock((Vector2)transform.position + Vector2.down, Vector2.down * fallSpeed, 24, RockFlight.Crashing);
+            }
             while (!arena.Finished && transform.position.y > floor)
             {
-                Vector2 previous = transform.position;
-                Vector2 next = new Vector2(x, Mathf.MoveTowards(previous.y, floor, Time.deltaTime * 27));
+                Vector2 next = new Vector2(x, Mathf.MoveTowards(transform.position.y, floor, Time.deltaTime * fallSpeed));
                 transform.position = next;
-                if (!float.IsPositiveInfinity(ArenaProjectile.ContactTime(previous, next, PlayerPosition, 1.6f)))
-                    arena.Player.Health.Hit(24, .8f);
                 yield return null;
             }
             transform.position = new Vector2(x, floor);
@@ -315,8 +464,6 @@ namespace BossTemplate
             Vector2 impact = new Vector2(x, arena.GroundY + .4f);
             arena.ShakeImpact(impact, Vector2.down * .32f);
             arena.Flash(impact, new Vector2(3.6f, .9f), new Color(1, .35f, .3f, .85f), .23f);
-            arena.StrikeRocks(impact, impact, 1.8f);
-            if (Vector2.Distance(PlayerPosition, impact) <= 1.8f) arena.Player.Health.Hit(24, .8f);
         }
     }
 }

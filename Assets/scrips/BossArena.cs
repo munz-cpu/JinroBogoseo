@@ -370,17 +370,20 @@ namespace BossTemplate
             return nearest;
         }
 
-        internal void ExplodeRock(Vector2 center, float radius)
+        internal void ExplodeRock(Vector2 center, float radius, bool launchUpward)
         {
             ShakeImpact(center, Vector2.down * .25f);
             Flash(center, Vector2.one * (radius * 2), new Color(1, .28f, .12f, .42f), .12f);
             ShowRockBreak(center + Vector2.up * .3f, new Vector2(radius * 1.35f, radius));
             var origin = new Vector2(center.x, GroundY + .9f);
+            float startAngle = launchUpward ? Mathf.PI / 4 : 0;
+            float angleStep = launchUpward ? Mathf.PI / 8 : Mathf.PI / 4;
+            float speed = launchUpward ? 11 : 6;
             for (int shard = 0; shard < 5; shard++)
             {
-                float angle = shard * Mathf.PI / 4;
+                float angle = startAngle + shard * angleStep;
                 var direction = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
-                SpawnRock(origin + direction * .25f, direction * 6, 20, RockFlight.Burst);
+                SpawnRock(origin + direction * .25f, direction * speed, 20, RockFlight.Burst);
             }
         }
     }

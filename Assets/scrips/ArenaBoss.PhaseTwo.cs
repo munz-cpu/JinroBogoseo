@@ -14,29 +14,32 @@ namespace BossTemplate
 
         private IEnumerator FightWithFists()
         {
+            var patterns = new System.Func<IEnumerator>[]
+            {
+                FistSlams, StoneAirHockey, FistSweep, ThrowMines, BeginRollingPattern
+            };
+            System.Func<IEnumerator> previous = null;
             yield return new WaitForSeconds(.85f);
             while (!arena.Finished)
             {
-                yield return FistSlams();
-                yield return new WaitForSeconds(.6f);
-                if (arena.Finished) yield break;
+                for (int i = patterns.Length - 1; i > 0; i--)
+                {
+                    int pick = Random.Range(0, i + 1);
+                    (patterns[i], patterns[pick]) = (patterns[pick], patterns[i]);
+                }
+                if (patterns[0] == previous)
+                {
+                    int pick = Random.Range(1, patterns.Length);
+                    (patterns[0], patterns[pick]) = (patterns[pick], patterns[0]);
+                }
 
-                yield return StoneAirHockey();
-                yield return new WaitForSeconds(.6f);
-                if (arena.Finished) yield break;
-
-                yield return FistSweep();
-                yield return new WaitForSeconds(.6f);
-                if (arena.Finished) yield break;
-
-                yield return ThrowMines();
-                if (arena.Finished) yield break;
-                StartCoroutine(RollingRocks());
-                yield return new WaitForSeconds(.65f);
-                if (arena.Finished) yield break;
-
-                yield return FistRockVolleys();
-                yield return new WaitForSeconds(1.2f);
+                foreach (var pattern in patterns)
+                {
+                    if (arena.Finished) yield break;
+                    previous = pattern;
+                    yield return pattern();
+                    yield return new WaitForSeconds(.6f);
+                }
             }
         }
 
@@ -224,58 +227,71 @@ namespace BossTemplate
             const int mineCount = 5;
             const float spacing = 2.35f;
             const float halfWidth = (mineCount - 1) * spacing * .5f;
+            const float liftTime = .55f;
+            const float windup = .25f;
+            const float throwInterval = .14f;
+            const float flightTime = 2.6f;
             Bounds bounds = arena.GroundBounds;
             float center = Mathf.Clamp(PlayerPosition.x, bounds.min.x + halfWidth + 1, bounds.max.x - halfWidth - 1);
             int healingMine = Random.value < HealingMineChance ? Random.Range(0, mineCount) : -1;
+            holdBothFists = true;
             Intent = "돌 지뢰밭 예고";
             for (int i = 0; i < mineCount; i++)
             {
                 float x = center - halfWidth + i * spacing;
-                arena.Flash(new Vector2(x, arena.GroundY + .12f), new Vector2(1.5f, .24f), FistLaneColor, 1.5f);
+                arena.Flash(new Vector2(x, arena.GroundY + .12f), new Vector2(1.5f, .24f), FistLaneColor,
+                    liftTime + windup + i * throwInterval + flightTime);
             }
-            yield return new WaitForSeconds(.65f);
+
+            Vector2 leftStart = fists[0].transform.position;
+            Vector2 rightStart = fists[1].transform.position;
+            float throwHeight = Mathf.Max(arena.GroundY + 8.5f, PlayerPosition.y + 2.5f);
+            var leftRaised = new Vector2(leftStart.x, throwHeight);
+            var rightRaised = new Vector2(rightStart.x, throwHeight);
+            for (float elapsed = 0; elapsed < liftTime && !arena.Finished; elapsed += Time.deltaTime)
+            {
+                float t = Mathf.SmoothStep(0, 1, elapsed / liftTime);
+                fists[0].transform.position = Vector2.Lerp(leftStart, leftRaised, t);
+                fists[1].transform.position = Vector2.Lerp(rightStart, rightRaised, t);
+                yield return null;
+            }
+            if (arena.Finished) yield break;
+            fists[0].transform.position = leftRaised;
+            fists[1].transform.position = rightRaised;
+            yield return new WaitForSeconds(windup);
+
             Intent = "돌 지뢰 투척";
             for (int i = 0; i < mineCount && !arena.Finished; i++)
             {
                 Vector2 origin = fists[i % fists.Length].transform.position;
                 Vector2 destination = new Vector2(center - halfWidth + i * spacing, arena.GroundY + ArenaProjectile.MineLandingOffset);
-                const float flightTime = 1f;
                 Vector2 velocity = (destination - origin) / flightTime;
-                velocity.y += ArenaProjectile.RockGravity * flightTime * .5f;
+                velocity.y += ArenaProjectile.MineGravity * flightTime * .5f;
                 arena.SpawnRock(origin, velocity, 15, RockFlight.Mine, healingMine: i == healingMine);
-                yield return new WaitForSeconds(.14f);
+                yield return new WaitForSeconds(throwInterval);
             }
+            StartCoroutine(ReturnFist(1));
+            yield return ReturnFist(0);
+            holdBothFists = false;
+        }
+
+        private IEnumerator BeginRollingPattern()
+        {
+            Intent = "바닥 구르는 돌";
+            StartCoroutine(RollingRocks());
+            yield return null;
         }
 
         private IEnumerator RollingRocks()
         {
-            for (int i = 0; i < 6 && !arena.Finished; i++)
+            for (int i = 0; i < 8 && !arena.Finished; i++)
             {
                 Bounds bounds = arena.GroundBounds;
                 float direction = i % 2 == 0 ? 1 : -1;
                 float x = direction > 0 ? bounds.min.x + .6f : bounds.max.x - .6f;
-                arena.SpawnRock(new Vector2(x, arena.GroundY + .6f), Vector2.right * direction * 12,
+                arena.SpawnRock(new Vector2(x, arena.GroundY + .6f), Vector2.right * direction * 5,
                     16, RockFlight.Rolling, holdTime: .28f);
-                yield return new WaitForSeconds(.72f);
-            }
-        }
-
-        private IEnumerator FistRockVolleys()
-        {
-            Intent = "주먹 돌무더기 예고";
-            yield return new WaitForSeconds(.5f);
-            Intent = "주먹 돌무더기";
-            for (int volley = 0; volley < 4 && !arena.Finished; volley++)
-            {
-                Vector2 origin = fists[volley % fists.Length].transform.position;
-                Vector2 aim = (PlayerPosition - origin).normalized;
-                if (aim == Vector2.zero) aim = Vector2.down;
-                for (int i = -2; i <= 2; i++)
-                {
-                    Vector2 direction = Quaternion.Euler(0, 0, i * 13) * aim;
-                    arena.SpawnRock(origin + direction * .5f, direction * 12, 12);
-                }
-                yield return new WaitForSeconds(.52f);
+                yield return new WaitForSeconds(.45f);
             }
         }
 

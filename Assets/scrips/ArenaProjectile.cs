@@ -6,7 +6,8 @@ namespace BossTemplate
 
     public sealed class ArenaProjectile : MonoBehaviour
     {
-        internal const float RockGravity = 25;
+        private const float RockGravity = 25;
+        internal const float MineGravity = 10;
         private const float ExplosionRadius = 2.2f;
         // Behind the ground tiles (0), in front of the scenery.
         private const int PlantedSortingOrder = -1;
@@ -56,7 +57,13 @@ namespace BossTemplate
             flight = mode;
             radius = enemy ? .65f : owner.Boss.ProjectileHitRadius;
             launchAt = Time.time + holdTime;
-            expires = launchAt + (mode switch { RockFlight.Launch => .65f, RockFlight.Burst => .48f, _ => 5f });
+            expires = launchAt + (mode switch
+            {
+                RockFlight.Launch => .65f,
+                RockFlight.Burst => .48f,
+                RockFlight.Rolling => owner.GroundBounds.size.x / Mathf.Max(.1f, Mathf.Abs(speed.x)) + .25f,
+                _ => 5f
+            });
             planted = false;
             healingMine = false;
             rockHits = !rock ? 0 : mode is RockFlight.Falling or RockFlight.Skipping or RockFlight.Mine ? 5 : 3;
@@ -131,9 +138,7 @@ namespace BossTemplate
             {
                 if (Time.time >= expires)
                 {
-                    Vector2 center = transform.position;
-                    gameObject.SetActive(false);
-                    arena.ExplodeRock(center, ExplosionRadius);
+                    DetonateMine();
                 }
                 else if (rockShell && rockShell.enabled)
                 {
@@ -160,7 +165,8 @@ namespace BossTemplate
 
             Vector2 from = transform.position;
             float step = Time.deltaTime;
-            if (flight is RockFlight.Skipping or RockFlight.Mine) velocity.y -= RockGravity * step;
+            if (flight == RockFlight.Skipping) velocity.y -= RockGravity * step;
+            else if (flight == RockFlight.Mine) velocity.y -= MineGravity * step;
             Vector2 to = from + velocity * step;
             float floor = arena.GroundY + rockGroundOffset;
             bool reachedFloor = (flight is RockFlight.Falling or RockFlight.Skipping or RockFlight.Crashing or RockFlight.Mine)
@@ -313,11 +319,17 @@ namespace BossTemplate
                 else if (!hostile && !arena.Boss.CanBeHit) targetTime = float.PositiveInfinity;
                 else targetTime = ContactTime(from, to, targetPosition, radius);
             }
-            if (!(flight is RockFlight.AirHockey or RockFlight.Rolling or RockFlight.Mine))
+            if (!(flight is RockFlight.AirHockey or RockFlight.Mine))
             {
                 ArenaProjectile rock = arena.FirstRockOnPath(from, to, hostile, flight == RockFlight.Skipping, out float rockTime);
                 if (rock && rockTime <= targetTime)
                 {
+                    if (flight == RockFlight.Rolling)
+                    {
+                        gameObject.SetActive(false);
+                        rock.DetonateMine(launchUpward: true);
+                        return true;
+                    }
                     rock.Strike(destroyedByPlayer: !hostile);
                     if (flight == RockFlight.Skipping) return false;
                     gameObject.SetActive(false);
@@ -342,6 +354,13 @@ namespace BossTemplate
             }
             gameObject.SetActive(false);
             return true;
+        }
+
+        private void DetonateMine(bool launchUpward = false)
+        {
+            Vector2 center = transform.position;
+            gameObject.SetActive(false);
+            arena.ExplodeRock(center, ExplosionRadius, launchUpward);
         }
 
         internal float BulletContactTime(Vector2 from, Vector2 to)

@@ -18,6 +18,7 @@ namespace BossTemplate
         public Bounds GroundBounds => ground.Bounds;
         [SerializeField, InspectorName("플레이어")] private SideViewPlayer player;
         [SerializeField, InspectorName("보스")] private ArenaBoss boss;
+        [SerializeField, InspectorName("연구 설정")] private StudySettings studySettings;
         [SerializeField, InspectorName("경기장 카메라")] private Camera arenaCamera;
         [SerializeField, InspectorName("탄환 목록")] private ArenaProjectile[] projectiles;
         [SerializeField, InspectorName("공격 표시 목록")] private ArenaEffect[] effects;
@@ -46,7 +47,24 @@ namespace BossTemplate
         };
         public SideViewPlayer Player => player;
         public ArenaBoss Boss => boss;
-        public bool Finished => Player.Health.Dead || (Boss.Phase == 2 && Boss.Health.Dead);
+        internal StudySession Study { get; private set; }
+        internal StudySettings ResearchSettings => studySettings;
+        public bool ResearchActive => Study != null;
+        public bool Finished => (Study && !Study.InCombat) || CombatEnded;
+        internal bool CombatEnded => Player.Health.Dead || (Boss.Phase == 2 && Boss.Health.Dead);
+        internal float StudyBossHealthRemaining
+        {
+            get
+            {
+                float phaseTwo = Boss.PhaseTwoMaximum;
+                float total = phaseOneHealth * (Study ? Study.BossHealthFactor : 1) + phaseTwo;
+                return Mathf.Clamp01((Boss.Health.Current + (Boss.Phase == 1 ? phaseTwo : 0)) / total);
+            }
+        }
+
+        internal PatternParameters Parameters(BossPattern pattern) =>
+            Study ? Study.Parameters(pattern) : AdaptiveDifficulty.Neutral;
+
         internal float RockPlantChance => rockPlantChance;
         internal float RockFuse => Mathf.Max(.1f, rockFuse);
 
@@ -114,6 +132,12 @@ namespace BossTemplate
             Player.Health.InitializeAudio(this);
             Boss.Health.InitializeAudio(this);
             ResetFight();
+            if (studySettings && studySettings.enabledForResearch)
+            {
+                EndStudyFight();
+                Study = gameObject.AddComponent<StudySession>();
+                Study.Initialize(this, studySettings);
+            }
         }
 
         private void OnDestroy() => Destroy(rockDustMesh);
@@ -145,10 +169,22 @@ namespace BossTemplate
         }
         public void ResetFight()
         {
+            if (!Study) ResetStudyFight();
+        }
+
+        internal void ResetStudyFight()
+        {
             ClearAttacks();
             Player.transform.position = playerStart; Boss.transform.position = bossStart;
-            Player.Health.ResetHealth(Player.Health.Maximum); Boss.Health.ResetHealth(phaseOneHealth);
+            Player.Health.ResetHealth(Player.Health.Maximum);
+            Boss.Health.ResetHealth(phaseOneHealth * (Study ? Study.BossHealthFactor : 1));
             Player.ResetState(); Boss.ResetState();
+        }
+
+        internal void EndStudyFight()
+        {
+            Boss.StopAllCoroutines();
+            ClearAttacks();
         }
 
         private void ClearAttacks()
@@ -180,7 +216,7 @@ namespace BossTemplate
 #if UNITY_EDITOR
         public void SkipCurrentPhase()
         {
-            if (Finished || Boss.Transitioning) return;
+            if (Study || Finished || Boss.Transitioning) return;
             Boss.Health.InvulnerableUntil = 0;
             Boss.Health.Hit(Boss.Health.Current);
             AdvancePhaseIfDefeated();
@@ -201,7 +237,7 @@ namespace BossTemplate
         private void Update()
         {
             AdvancePhaseIfDefeated();
-            if (Finished && Keyboard.current != null && Keyboard.current.enterKey.wasPressedThisFrame) ResetFight();
+            if (!Study && Finished && Keyboard.current != null && Keyboard.current.enterKey.wasPressedThisFrame) ResetFight();
         }
 
         private void AdvancePhaseIfDefeated()
@@ -326,7 +362,7 @@ namespace BossTemplate
         public bool SpawnProjectile(Vector2 position, Vector2 velocity, float damage, bool hostile, Sprite sprite = null)
             => SpawnProjectile(position, velocity, damage, hostile, sprite, null, RockFlight.Straight) != null;
 
-        internal ArenaProjectile SpawnRock(Vector2 position, Vector2 velocity, float damage,
+        internal ArenaProjectile SpawnRock(BossPattern pattern, Vector2 position, Vector2 velocity, float damage,
             RockFlight flight = RockFlight.Straight, float holdTime = 0, bool healingMine = false)
         {
             RockAppearance appearance = default;
@@ -334,19 +370,19 @@ namespace BossTemplate
                 appearance = fallingRocks[Random.Range(0, fallingRocks.Length)];
             Sprite shell = flight is RockFlight.Falling or RockFlight.Mine ? appearance.shell : null;
             ArenaProjectile rock = SpawnProjectile(position, velocity, damage, true, appearance.solid ? appearance.solid : rockSprite,
-                shell, flight, true, holdTime);
+                shell, flight, true, holdTime, pattern);
             if (rock && healingMine) rock.MarkHealingMine();
             return rock;
         }
 
         private ArenaProjectile SpawnProjectile(Vector2 position, Vector2 velocity, float damage, bool hostile,
-            Sprite sprite, Sprite shell, RockFlight flight, bool rock = false, float holdTime = 0)
+            Sprite sprite, Sprite shell, RockFlight flight, bool rock = false, float holdTime = 0, BossPattern? pattern = null)
         {
             foreach (var item in projectiles)
             {
                 if (item.gameObject.activeSelf) continue;
                 item.transform.position = position;
-                item.Initialize(this, velocity, damage, hostile, sprite, shell, flight, rock, holdTime);
+                item.Initialize(this, velocity, damage, hostile, sprite, shell, flight, rock, holdTime, pattern);
                 item.gameObject.SetActive(true);
                 return item;
             }
@@ -370,7 +406,7 @@ namespace BossTemplate
             return nearest;
         }
 
-        internal void ExplodeRock(Vector2 center, float radius, bool launchUpward)
+        internal void ExplodeRock(BossPattern pattern, Vector2 center, float radius, bool launchUpward)
         {
             ShakeImpact(center, Vector2.down * .25f);
             Flash(center, Vector2.one * (radius * 2), new Color(1, .28f, .12f, .42f), .12f);
@@ -383,7 +419,7 @@ namespace BossTemplate
             {
                 float angle = startAngle + shard * angleStep;
                 var direction = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
-                SpawnRock(origin + direction * .25f, direction * speed, 20, RockFlight.Burst);
+                SpawnRock(pattern, origin + direction * .25f, direction * speed, 20, RockFlight.Burst);
             }
         }
     }

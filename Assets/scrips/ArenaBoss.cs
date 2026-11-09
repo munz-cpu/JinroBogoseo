@@ -52,6 +52,7 @@ namespace BossTemplate
         private readonly float[] fistWindupUntil = new float[2];
         private float fistOrbitStart;
         private static readonly Color FistWarningColor = new Color(1, .52f, .23f);
+        internal float PhaseTwoMaximum => phaseTwoHealth * (arena.Study ? arena.Study.BossHealthFactor : 1);
         public FighterHealth Health { get; private set; }
         public int Phase { get; private set; } = 1;
         public bool Transitioning { get; private set; }
@@ -158,10 +159,20 @@ namespace BossTemplate
                 Vector3 lowered = raised + appearance.transform.parent.InverseTransformVector(Vector3.down * 11);
                 appearance.transform.localPosition = lowered;
                 SetHidden(false);
-                arena.ShakeImpact(new Vector2(giantX, arena.GroundY + 1), Vector2.down * .35f);
-                for (float elapsed = 0; elapsed < 1.65f; elapsed += Time.deltaTime)
+                const float riseDuration = 3f;
+                const float rumbleInterval = .2f;
+                var rumbleOrigin = new Vector2(giantX, arena.GroundY + 1);
+                float nextRumble = 0;
+                for (float elapsed = 0; elapsed < riseDuration; elapsed += Time.deltaTime)
                 {
-                    appearance.transform.localPosition = Vector3.Lerp(lowered, raised, Mathf.SmoothStep(0, 1, elapsed / 1.65f));
+                    float progress = elapsed / riseDuration;
+                    appearance.transform.localPosition = Vector3.Lerp(lowered, raised, Mathf.SmoothStep(0, 1, progress));
+                    if (elapsed >= nextRumble)
+                    {
+                        float strength = Mathf.Lerp(.35f, .09f, progress);
+                        arena.ShakeImpact(rumbleOrigin, Vector2.down * strength, allowOffscreen: true);
+                        nextRumble = elapsed + rumbleInterval;
+                    }
                     yield return null;
                 }
                 appearance.transform.localPosition = raised;
@@ -171,7 +182,7 @@ namespace BossTemplate
             yield return new WaitForSeconds(.45f);
             Phase = 2;
             Transitioning = false;
-            Health.ResetHealth(phaseTwoHealth);
+            Health.ResetHealth(PhaseTwoMaximum);
             Intent = "2페이즈 시작";
             if (!arena.Finished)
             {
@@ -281,27 +292,32 @@ namespace BossTemplate
         {
             yield return new WaitForSeconds(1f);
             int nextPattern = 0;
+            BossPattern? previous = null;
             while (!arena.Finished)
             {
-                int pattern = nextPattern++ % 9;
-                pauseRain = pattern < 5;
+                BossPattern pattern = arena.Study
+                    ? arena.Study.Pick(StudySession.PhaseOne, previous)
+                    : StudySession.PhaseOne[nextPattern++ % StudySession.PhaseOne.Length];
+                previous = pattern;
+                arena.Study?.Executed(pattern);
+                pauseRain = (int)pattern < (int)BossPattern.dash;
                 switch (pattern)
                 {
-                    case 0: yield return GroundBarrage(); break;
-                    case 1: yield return FaultLine(); break;
-                    case 2: yield return Crossfire(); break;
-                    case 3: yield return CeilingCollapse(); break;
-                    case 4: yield return StoneNova(); break;
-                    case 5: yield return Dash(); break;
-                    case 6: yield return Spread(); break;
-                    case 7: yield return SkippingRocks(); break;
-                    case 8: yield return TeleportSlam(); break;
+                    case BossPattern.ground_barrage: yield return GroundBarrage(); break;
+                    case BossPattern.fault_line: yield return FaultLine(); break;
+                    case BossPattern.crossfire: yield return Crossfire(); break;
+                    case BossPattern.ceiling_collapse: yield return CeilingCollapse(); break;
+                    case BossPattern.stone_nova: yield return StoneNova(); break;
+                    case BossPattern.dash: yield return Dash(); break;
+                    case BossPattern.spread: yield return Spread(); break;
+                    case BossPattern.skipping_rocks: yield return SkippingRocks(); break;
+                    case BossPattern.teleport_slam: yield return TeleportSlam(); break;
                 }
                 pauseRain = false;
                 if (arena.Finished) break;
                 PlayMotion(idleFrames, loop: true);
                 Intent = "다음 공격 준비";
-                yield return new WaitForSeconds(attackInterval * .45f);
+                yield return new WaitForSeconds(attackInterval * .45f * arena.Parameters(pattern).interval);
             }
             Intent = "전투 종료";
             if (!Health.Dead) PlayMotion(idleFrames, loop: true);
@@ -358,10 +374,10 @@ namespace BossTemplate
             Intent = "돌진";
             arena.PlayEffect(dashSound);
             PlayMotion(idleFrames, speed: 2, loop: true);
-            arena.SpawnRock(new Vector2(launchX, y), Vector2.right * direction * 28, 20);
+            arena.SpawnRock(BossPattern.dash, new Vector2(launchX, y), Vector2.right * direction * 28, 20);
             while (!arena.Finished && !Mathf.Approximately(transform.position.x, destination))
             {
-                Vector2 next = new Vector2(Mathf.MoveTowards(transform.position.x, destination, Time.deltaTime * 27), StandingY);
+                Vector2 next = new Vector2(Mathf.MoveTowards(transform.position.x, destination, Time.deltaTime * 27 * arena.Parameters(BossPattern.dash).speed), StandingY);
                 transform.position = next;
                 if (next.x == destination)
                     arena.ShakeImpact(next, Vector2.right * direction * .23f);
@@ -385,7 +401,7 @@ namespace BossTemplate
                 Intent = "저공 돌탄";
                 PlayMotion(shootFrames);
                 arena.PlayEffect(spreadSound);
-                arena.SpawnRock(new Vector2(start, y), Vector2.right * direction * 15, 14);
+                arena.SpawnRock(BossPattern.ground_barrage, new Vector2(start, y), Vector2.right * direction * 15, 14);
                 yield return new WaitForSeconds(.24f);
             }
         }
@@ -418,7 +434,7 @@ namespace BossTemplate
                 var impact = new Vector2(x, arena.GroundY + .25f);
                 arena.PlayEffect(fissureSound);
                 arena.ShowRockLandingDust(impact, 1.8f, playSound: false);
-                arena.SpawnRock(impact, Vector2.up * 7, 15, RockFlight.Burst);
+                arena.SpawnRock(BossPattern.fault_line, impact, Vector2.up * 7, 15, RockFlight.Burst);
                 arena.ShakeImpact(impact, Vector2.down * .11f);
                 yield return new WaitForSeconds(interval);
             }
@@ -444,8 +460,8 @@ namespace BossTemplate
                 Intent = wave == 0 ? "협공 · 하단" : "협공 · 상단";
                 PlayMotion(shootFrames);
                 arena.PlayEffect(skipSound);
-                arena.SpawnRock(left, Vector2.right * 12, 13);
-                arena.SpawnRock(right, Vector2.left * 12, 13);
+                arena.SpawnRock(BossPattern.crossfire, left, Vector2.right * 12, 13);
+                arena.SpawnRock(BossPattern.crossfire, right, Vector2.left * 12, 13);
                 yield return new WaitForSeconds(.5f);
             }
         }
@@ -464,7 +480,7 @@ namespace BossTemplate
             {
                 if (lane == safeLane) continue;
                 float x = center + lane * spacing;
-                arena.SpawnRock(new Vector2(x, arena.GroundY + FallingRockHoverHeight),
+                arena.SpawnRock(BossPattern.ceiling_collapse, new Vector2(x, arena.GroundY + FallingRockHoverHeight),
                     Vector2.down * speed, 14, RockFlight.Falling, holdTime: warningTime,
                     healingMine: hasHealingMine && lane == healingLane);
             }
@@ -502,7 +518,7 @@ namespace BossTemplate
             {
                 float heading = angle + spoke * Mathf.PI / 6;
                 var direction = new Vector2(Mathf.Cos(heading), Mathf.Sin(heading));
-                arena.SpawnRock(origin + direction * .8f, direction * 9, 12);
+                arena.SpawnRock(BossPattern.stone_nova, origin + direction * .8f, direction * 9, 12);
             }
             yield return new WaitForSeconds(.65f);
         }
@@ -518,9 +534,11 @@ namespace BossTemplate
                     yield return null;
                     continue;
                 }
+                arena.Study?.Executed(BossPattern.rock_rain);
                 yield return RockRain();
                 if (arena.Finished) yield break;
-                yield return new WaitForSeconds(2.2f);
+                var rain = arena.Parameters(BossPattern.rock_rain);
+                yield return new WaitForSeconds(2.2f * rain.interval / rain.selection_weight);
             }
         }
 
@@ -534,7 +552,7 @@ namespace BossTemplate
             if (arena.Finished || pauseRain) yield break;
             arena.PlayEffect(rainLaunchSound);
             if (!Hidden)
-                arena.SpawnRock((Vector2)transform.position + Vector2.up, Vector2.up * 25, 0, RockFlight.Launch);
+                arena.SpawnRock(BossPattern.rock_rain, (Vector2)transform.position + Vector2.up, Vector2.up * 25, 0, RockFlight.Launch);
             const int rockCount = 7;
             const float rockInterval = .25f;
             int healingRock = Random.value < HealingMineChance ? Random.Range(0, rockCount) : -1;
@@ -552,7 +570,7 @@ namespace BossTemplate
                 int selected = Random.Range(i, rockCount);
                 float x = positions[selected];
                 positions[selected] = positions[i];
-                arena.SpawnRock(new Vector2(x, arena.GroundY + FallingRockHoverHeight),
+                arena.SpawnRock(BossPattern.rock_rain, new Vector2(x, arena.GroundY + FallingRockHoverHeight),
                     Vector2.down * fallSpeed, 14, RockFlight.Falling, holdTime: hoverTime, healingMine: i == healingRock);
                 if (i < rockCount - 1) yield return new WaitForSeconds(rockInterval);
             }
@@ -576,7 +594,7 @@ namespace BossTemplate
                 for (int i = -2; i <= 2; i++)
                 {
                     Vector2 direction = Quaternion.Euler(0, 0, i * 23) * aim;
-                    arena.SpawnRock(origin, direction * 8, 11);
+                    arena.SpawnRock(BossPattern.spread, origin, direction * 8, 11);
                 }
                 if (volley < 3) yield return new WaitForSeconds(.43f);
             }
@@ -595,7 +613,7 @@ namespace BossTemplate
                 yield return new WaitForSeconds(.11f);
                 if (arena.Finished) yield break;
                 arena.PlayEffect(skipSound);
-                arena.SpawnRock(transform.position, new Vector2(direction * 4.5f, 3.5f), 12, RockFlight.Skipping);
+                arena.SpawnRock(BossPattern.skipping_rocks, transform.position, new Vector2(direction * 4.5f, 3.5f), 12, RockFlight.Skipping);
                 if (i < 4) yield return new WaitForSeconds(.87f);
             }
         }
@@ -618,7 +636,7 @@ namespace BossTemplate
             float floor = StandingY;
             transform.position = new Vector2(x, Mathf.Max(floor + 5, PlayerPosition.y + 4));
             Intent = "내려찍기 예고";
-            arena.SpawnRock((Vector2)transform.position + Vector2.down, Vector2.down * fallSpeed,
+            arena.SpawnRock(BossPattern.teleport_slam, (Vector2)transform.position + Vector2.down, Vector2.down * fallSpeed,
                 24, RockFlight.Crashing, holdTime: hoverTime);
             yield return new WaitForSeconds(hoverTime);
             if (!arena.Finished)

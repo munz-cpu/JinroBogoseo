@@ -27,7 +27,7 @@ internal static class BossDebugToolbar
         string label = arena && arena.Player.Health.DebugInvincible ? "무적 ON" : "무적 OFF";
         return new MainToolbarButton(new MainToolbarContent(label, "플레이어 무적 전환"), ToggleInvincibility)
         {
-            enabled = EditorApplication.isPlaying
+            enabled = ActiveArena() != null
         };
     }
 
@@ -36,12 +36,15 @@ internal static class BossDebugToolbar
     {
         return new MainToolbarButton(new MainToolbarContent("페이즈 건너뛰기", "현재 페이즈 즉시 종료"), SkipPhase)
         {
-            enabled = EditorApplication.isPlaying
+            enabled = ActiveArena() != null
         };
     }
 
-    private static BossArena ActiveArena() =>
-        EditorApplication.isPlaying ? Object.FindAnyObjectByType<BossArena>() : null;
+    private static BossArena ActiveArena()
+    {
+        var arena = EditorApplication.isPlaying ? Object.FindAnyObjectByType<BossArena>() : null;
+        return arena && !arena.ResearchActive ? arena : null;
+    }
 
     [MenuItem(InvincibleMenu, false, 10)]
     private static void ToggleInvincibility()

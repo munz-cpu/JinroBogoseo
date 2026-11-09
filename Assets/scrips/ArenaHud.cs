@@ -18,14 +18,14 @@ namespace BossTemplate
             {
                 ammo.text = rounds switch
                 {
-                    -1 => "탄약 무제한",
+                    -1 => string.Empty,
                     0 => "재장전 중",
                     _ => $"탄약 {rounds} / {capacity}"
                 };
                 displayedRounds = rounds;
                 displayedCapacity = capacity;
             }
-            result.text = arena.Finished
+            result.text = !arena.ResearchActive && arena.Finished
                 ? (arena.Player.Health.Dead ? "패배! Enter로 재도전" : "승리! Enter로 재도전")
                 : "";
         }

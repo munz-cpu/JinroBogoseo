@@ -51,18 +51,22 @@ namespace BossTemplate
             SetHitFlash(false);
         }
         public void Restore(float amount) { if (!Dead) Current = Mathf.Min(maximum, Current + Mathf.Max(0, amount)); }
-        public bool Hit(float damage, float immunity = 0, bool flash = true)
+        public bool Hit(float damage, float immunity = 0, bool flash = true) =>
+            Hit(damage, immunity, flash, null);
+
+        internal bool Hit(float damage, float immunity, bool flash, BossPattern? pattern)
         {
 #if UNITY_EDITOR
             if (DebugInvincible) return false;
 #endif
             if (Dead || Time.time < InvulnerableUntil) return false;
             float remaining = Mathf.Max(0, Current - Mathf.Max(0, damage));
-            bool lostHealth = remaining < Current;
+            float lostHealth = Current - remaining;
             Current = remaining;
             InvulnerableUntil = Time.time + immunity;
-            if (lostHealth)
+            if (lostHealth > 0)
             {
+                if (arena) arena.Study?.RecordDamage(this, lostHealth, pattern);
                 LastDamageTime = Time.time;
                 if (flash) hitFlashUntil = Time.time + HitFlashDuration;
                 if (arena) arena.PlayEffect(Dead && defeatSound ? defeatSound : hitSound);

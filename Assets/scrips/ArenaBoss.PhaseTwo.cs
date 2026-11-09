@@ -14,6 +14,28 @@ namespace BossTemplate
 
         private IEnumerator FightWithFists()
         {
+            if (arena.Study)
+            {
+                yield return new WaitForSeconds(.85f);
+                BossPattern? previousPattern = null;
+                while (!arena.Finished)
+                {
+                    BossPattern pattern = arena.Study.Pick(StudySession.PhaseTwo, previousPattern);
+                    previousPattern = pattern;
+                    arena.Study.Executed(pattern);
+                    yield return pattern switch
+                    {
+                        BossPattern.fist_slams => FistSlams(),
+                        BossPattern.air_hockey => StoneAirHockey(),
+                        BossPattern.fist_sweep => FistSweep(),
+                        BossPattern.throw_mines => ThrowMines(),
+                        _ => BeginRollingPattern()
+                    };
+                    yield return new WaitForSeconds(.45f * arena.Parameters(pattern).interval);
+                }
+                yield break;
+            }
+
             var patterns = new System.Func<IEnumerator>[]
             {
                 FistSlams, StoneAirHockey, FistSweep, ThrowMines, BeginRollingPattern
@@ -38,24 +60,28 @@ namespace BossTemplate
                     if (arena.Finished) yield break;
                     previous = pattern;
                     yield return pattern();
-                    yield return new WaitForSeconds(.6f);
+                    yield return new WaitForSeconds(.45f);
                 }
             }
         }
 
         private IEnumerator FistSlams()
         {
-            const int slamCount = 3;
-            yield return PrepareSlam(0);
+            const int slamCount = 8;
+            const float speedIncreasePerSlam = .08f;
+            yield return PrepareSlam(0, 1);
             for (int slam = 0; slam < slamCount && !arena.Finished; slam++)
             {
                 int index = slam % fists.Length;
                 SpriteRenderer fist = fists[index];
-                Coroutine nextWindup = slam + 1 < slamCount ? StartCoroutine(PrepareSlam((index + 1) % fists.Length)) : null;
+                float speedMultiplier = 1 + slam * speedIncreasePerSlam;
+                Coroutine nextWindup = slam + 1 < slamCount
+                    ? StartCoroutine(PrepareSlam((index + 1) % fists.Length, speedMultiplier + speedIncreasePerSlam))
+                    : null;
                 float x = fist.transform.position.x;
                 float bottom = arena.GroundY + fist.bounds.extents.y;
                 Intent = "연속 내려찍기";
-                yield return MoveFist(fist, new Vector2(x, bottom), 26, 24);
+                yield return MoveFist(fist, new Vector2(x, bottom), 26 * speedMultiplier, 24, BossPattern.fist_slams);
                 if (arena.Finished) yield break;
                 var impact = new Vector2(x, arena.GroundY);
                 arena.ShowRockLandingDust(impact, fist.bounds.size.x, playSound: false);
@@ -67,7 +93,7 @@ namespace BossTemplate
             }
         }
 
-        private IEnumerator PrepareSlam(int index)
+        private IEnumerator PrepareSlam(int index, float speedMultiplier)
         {
             while (fistBusy[index] && !arena.Finished) yield return null;
             if (arena.Finished) yield break;
@@ -76,14 +102,14 @@ namespace BossTemplate
             fistBusy[index] = true;
             float x = ClampFistX(PlayerPosition.x, fist);
             float bottom = arena.GroundY + fist.bounds.extents.y;
-            float top = Mathf.Max(bottom + 4.5f, PlayerPosition.y + 2.8f);
+            float top = Mathf.Max(bottom + 9f, PlayerPosition.y + 5.5f);
             var raised = new Vector2(x, top);
-            const float raiseSpeed = 28;
-            const float windup = .55f;
+            float raiseSpeed = 28 * speedMultiplier;
+            float windup = .55f / speedMultiplier;
             float lead = Vector2.Distance(fist.transform.position, raised) / raiseSpeed + windup;
             Intent = "연속 내려찍기 예고";
             arena.Flash(new Vector2(x, (top + arena.GroundY) * .5f),
-                new Vector2(fist.bounds.size.x, top - arena.GroundY), FistLaneColor, lead);
+                new Vector2(fist.bounds.size.x * arena.Parameters(BossPattern.fist_slams).hitbox, top - arena.GroundY), FistLaneColor, lead);
             fistWindupUntil[index] = Time.time + lead;
             yield return MoveFist(fist, raised, raiseSpeed);
             yield return new WaitForSeconds(windup);
@@ -115,7 +141,7 @@ namespace BossTemplate
             }
 
             court = AirHockeyCourt;
-            ArenaProjectile puck = arena.Finished ? null : arena.SpawnRock(
+            ArenaProjectile puck = arena.Finished ? null : arena.SpawnRock(BossPattern.air_hockey,
                 new Vector2(court.xMin, HockeyServeHeight(court)), Vector2.right * 17.5f, 20,
                 RockFlight.AirHockey, holdTime: 2f);
             for (float elapsed = 0; elapsed < serveWarning && !arena.Finished; elapsed += Time.deltaTime)
@@ -200,38 +226,50 @@ namespace BossTemplate
             fist.flipX = endX < startX;
             Intent = "주먹이 플레이어 높이를 추적한다";
             const float tracking = 2f;
+            const float warning = .55f;
+            Bounds ground = arena.GroundBounds;
+            var laneCenter = new Vector2(ground.center.x, fist.transform.position.y);
+            var laneSize = new Vector2(ground.size.x, fist.bounds.size.y * arena.Parameters(BossPattern.fist_sweep).hitbox);
+            GameObject lane = arena.Flash(laneCenter, laneSize, FistLaneColor, tracking + warning);
             fistWindupUntil[index] = Time.time + tracking;
             for (float elapsed = 0; elapsed < tracking && !arena.Finished; elapsed += Time.deltaTime)
             {
                 Vector2 follow = new Vector2(startX, Mathf.Max(PlayerPosition.y, bottom));
                 fist.transform.position = Vector2.MoveTowards(fist.transform.position, follow, Time.deltaTime * 27);
+                laneCenter.y = fist.transform.position.y;
+                if (lane) lane.transform.position = laneCenter;
                 yield return null;
             }
-            if (arena.Finished) yield break;
+            if (arena.Finished)
+            {
+                if (lane) lane.SetActive(false);
+                yield break;
+            }
 
             float lockedY = fist.transform.position.y;
-            const float warning = .55f;
             fistWindupUntil[index] = Time.time + warning;
-            arena.Flash(new Vector2(arena.GroundBounds.center.x, lockedY),
-                new Vector2(arena.GroundBounds.size.x, fist.bounds.size.y), FistLaneColor, warning);
+            Intent = "수평 쓸기 예고";
+            var lockedColor = new Color(1, .35f, .12f, .65f);
+            if (lane) lane.GetComponent<ArenaEffect>().Show(laneCenter, laneSize, lockedColor, warning);
+            else arena.Flash(laneCenter, laneSize, lockedColor, warning);
             yield return new WaitForSeconds(warning);
             if (arena.Finished) yield break;
 
             Intent = "수평 쓸기";
-            yield return MoveFist(fist, new Vector2(endX, lockedY), 27, 26);
+            yield return MoveFist(fist, new Vector2(endX, lockedY), 30, 26, BossPattern.fist_sweep);
             yield return ReturnFist(index);
         }
 
         private IEnumerator ThrowMines()
         {
-            const int mineCount = 5;
-            const float spacing = 2.35f;
-            const float halfWidth = (mineCount - 1) * spacing * .5f;
+            const int mineCount = 9;
             const float liftTime = .55f;
             const float windup = .25f;
             const float throwInterval = .14f;
             const float flightTime = 2.6f;
             Bounds bounds = arena.GroundBounds;
+            float spacing = Mathf.Min(2.35f, Mathf.Max(0, bounds.size.x - 2) / (mineCount - 1));
+            float halfWidth = (mineCount - 1) * spacing * .5f;
             float center = Mathf.Clamp(PlayerPosition.x, bounds.min.x + halfWidth + 1, bounds.max.x - halfWidth - 1);
             int healingMine = Random.value < HealingMineChance ? Random.Range(0, mineCount) : -1;
             holdBothFists = true;
@@ -267,7 +305,7 @@ namespace BossTemplate
                 Vector2 destination = new Vector2(center - halfWidth + i * spacing, arena.GroundY + ArenaProjectile.MineLandingOffset);
                 Vector2 velocity = (destination - origin) / flightTime;
                 velocity.y += ArenaProjectile.MineGravity * flightTime * .5f;
-                arena.SpawnRock(origin, velocity, 15, RockFlight.Mine, healingMine: i == healingMine);
+                arena.SpawnRock(BossPattern.throw_mines, origin, velocity, 15, RockFlight.Mine, healingMine: i == healingMine);
                 yield return new WaitForSeconds(throwInterval);
             }
             StartCoroutine(ReturnFist(1));
@@ -289,7 +327,7 @@ namespace BossTemplate
                 Bounds bounds = arena.GroundBounds;
                 float direction = i % 2 == 0 ? 1 : -1;
                 float x = direction > 0 ? bounds.min.x + .6f : bounds.max.x - .6f;
-                arena.SpawnRock(new Vector2(x, arena.GroundY + .6f), Vector2.right * direction * 5,
+                arena.SpawnRock(BossPattern.rolling_rocks, new Vector2(x, arena.GroundY + .6f), Vector2.right * direction * 5,
                     16, RockFlight.Rolling, holdTime: .28f);
                 yield return new WaitForSeconds(.45f);
             }
@@ -302,8 +340,11 @@ namespace BossTemplate
             return Mathf.Clamp(x, bounds.min.x + halfWidth, bounds.max.x - halfWidth);
         }
 
-        private IEnumerator MoveFist(SpriteRenderer fist, Vector2 destination, float speed, float damage = 0)
+        private IEnumerator MoveFist(SpriteRenderer fist, Vector2 destination, float speed, float damage = 0, BossPattern? pattern = null)
         {
+            PatternParameters parameters = pattern.HasValue ? arena.Parameters(pattern.Value) : AdaptiveDifficulty.Neutral;
+            speed *= parameters.speed;
+            damage *= parameters.damage;
             bool madeContact = false;
             while (!arena.Finished)
             {
@@ -312,12 +353,13 @@ namespace BossTemplate
                 if (damage > 0 && !madeContact)
                 {
                     Bounds contact = fist.bounds;
+                    contact.size *= parameters.hitbox;
                     contact.Expand((Vector3)(arena.Player.HurtboxHalfSize * 2));
                     Vector2 player = PlayerPosition;
                     if (ArenaProjectile.BoundsContactTime(contact, player, player - (next - previous)) < float.PositiveInfinity)
                     {
                         madeContact = true;
-                        if (arena.Player.Health.Hit(damage, .65f))
+                        if (arena.Player.Health.Hit(damage, .65f, true, pattern))
                             arena.ShakeImpact(next, (next - previous).normalized * .23f);
                     }
                 }

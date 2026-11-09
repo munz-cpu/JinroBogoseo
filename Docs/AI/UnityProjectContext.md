@@ -1,11 +1,12 @@
 # Unity 프로젝트 참고사항
 
-2026-11-01 갱신. Unity 6000.6.3f1, URP 17.6, Input System 1.20을 사용합니다. 활성 입력 설정은 Input System입니다. 네트워크와 저장 기능은 없습니다.
+Unity 6000.6.3f1, URP 17.6, Input System 1.20을 사용합니다. 활성 입력 설정은 Input System입니다. 보스전은 싱글 플레이이며 연구 모드에서 로컬 저장과 실험 API를 사용합니다.
 
 ## 구성
 
 - Assets/scrips: 사용자가 만든 스크립트 폴더. 보스전 스크립트 7개와 한국어 사용 설명서를 보관합니다.
-- Assets/Scenes/BossFight.unity: 빌드 설정에 등록된 보스전 씬.
+- Assets/Scenes/BossFight.unity: 기본 빌드에 등록된 일반 보스전 씬.
+- Assets/Scenes/BossStudy.unity: 동의와 연구 기록을 활성화하는 실험용 보스전 씬.
 - Assets/Scenes/보스전자료: 공용 사각형 스프라이트와 한글 글꼴.
 - Assets/Settings: 기존 프로젝트 설정과 입력 액션. 변경하지 않습니다.
 
@@ -30,3 +31,5 @@ SideViewPlayer에서 이동·키·대기시간을, ArenaBoss에서 공격 시간
 사격 모션 보강: CHaracter202 발사 상체(총구 화염 포함, 비행 탄환 없음)를 매 발사 후 0.07초 재생하고 기본 상체로 복귀합니다. 원본 방향과 피벗 차이를 보정하며 하체 이동 애니메이션은 계속 재생합니다. 발사 프레임 포함 Play Mode 검증 7개 및 실제 렌더 확인 완료.
 플레이어 VFX 추가: 발사 시 노란 섬광과 작은 불꽃, 두 번째 점프 시 청록 링과 하강 불꽃을 기존 ArenaEffect 16개 풀에서 재사용합니다. Effects 폴더의 메시와 투명 Unlit 머티리얼을 자식 MeshRenderer로 표시하며 확대·이동·페이드 후 비활성화됩니다. 보스 경고 표시는 원래 SpriteRenderer로 복원됩니다. 탄막 동시 발사 섬광은 프레임당 한 번으로 제한합니다. 첫 점프 제외·더블 점프·추가 점프 거부·총 발사·링 확대·수명 종료·풀 복원·재시작 8개 검증과 실제 렌더 확인을 통과했습니다.
 웅크리기: 원본 CHaracter121(대기)/122(사격) 스프라이트를 확인하여 적용했습니다. S·↓ 지상 홀드 시 이동을 멈추고 충돌 반높이를 0.9에서 0.6으로 낮추며 발 위치를 보존합니다. 해제하면 복귀하고 공중에서는 기존 빠른 낙하를 유지합니다. 아래+점프 발판 통과를 우선하며 웅크린 사격 총구 높이도 조정합니다. 스프라이트·높이·발 위치·정지·사격·복귀·발판 내려가기 관련 6개 Play Mode 검증 통과.
+
+2026-11-09 갱신. 별도 BossStudy 씬에 동의·설문·DDA와 로컬 저장 및 FastAPI 전송을 연결했습니다. ResearchServer의 SQLite가 원본 저장소입니다. Assets/Settings/BossStudySettings.asset을 연구 씬의 BossArena에 연결합니다. 운영 및 검증 방법은 Docs/BossStudy.md에 있습니다.

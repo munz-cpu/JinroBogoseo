@@ -1,0 +1,16 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c043afab1a904bc4b172d8de819f641b, type: 3}
+  m_Name: BossStudySettings
+  m_EditorClassIdentifier:
+  enabledForResearch: 1
+  font: {fileID: 12800000, guid: 191fee009f2398e4fb2d0b4d534d0f69, type: 3}

@@ -6,7 +6,7 @@ Unity 6000.6.3f1, URP 17.6, Input System 1.20을 사용합니다. 활성 입력 
 
 - Assets/scrips: 사용자가 만든 스크립트 폴더. 보스전 스크립트 7개와 한국어 사용 설명서를 보관합니다.
 - Assets/Scenes/BossFight.unity: Unity Editor에서 열 수 있는 일반 보스전 씬.
-- Assets/Scenes/BossStudyStart.unity, BossStudyGame.unity, BossStudyReview.unity: 기본 빌드에 순서대로 등록된 게임 시작, 보스전 진행, 후기 씬.
+- Assets/Scenes/BossStudyStart.unity, BossStudyIntro.unity, BossStudyGame.unity, BossStudyReview.unity: 기본 빌드에 순서대로 등록된 게임 시작, 플레이테스트 안내, 보스전 진행, 후기 씬.
 - Assets/Scenes/보스전자료: 공용 사각형 스프라이트와 한글 글꼴.
 - Assets/Settings: 기존 프로젝트 설정과 입력 액션. 변경하지 않습니다.
 
@@ -32,4 +32,4 @@ SideViewPlayer에서 이동·키·대기시간을, ArenaBoss에서 공격 시간
 플레이어 VFX 추가: 발사 시 노란 섬광과 작은 불꽃, 두 번째 점프 시 청록 링과 하강 불꽃을 기존 ArenaEffect 16개 풀에서 재사용합니다. Effects 폴더의 메시와 투명 Unlit 머티리얼을 자식 MeshRenderer로 표시하며 확대·이동·페이드 후 비활성화됩니다. 보스 경고 표시는 원래 SpriteRenderer로 복원됩니다. 탄막 동시 발사 섬광은 프레임당 한 번으로 제한합니다. 첫 점프 제외·더블 점프·추가 점프 거부·총 발사·링 확대·수명 종료·풀 복원·재시작 8개 검증과 실제 렌더 확인을 통과했습니다.
 웅크리기: 원본 CHaracter121(대기)/122(사격) 스프라이트를 확인하여 적용했습니다. S·↓ 지상 홀드 시 이동을 멈추고 충돌 반높이를 0.9에서 0.6으로 낮추며 발 위치를 보존합니다. 해제하면 복귀하고 공중에서는 기존 빠른 낙하를 유지합니다. 아래+점프 발판 통과를 우선하며 웅크린 사격 총구 높이도 조정합니다. 스프라이트·높이·발 위치·정지·사격·복귀·발판 내려가기 관련 6개 Play Mode 검증 통과.
 
-2026-11-09 갱신. 연구 플레이는 BossStudyStart, BossStudyGame, BossStudyReview를 순서대로 엽니다. 세 씬이 Assets/Settings/BossStudySettings.asset과 하나의 참가자 세션을 공유합니다. ResearchServer의 SQLite가 원본 저장소입니다. 운영 및 검증 방법은 Docs/BossStudy.md에 있습니다.
+연구 플레이는 BossStudyStart, BossStudyIntro, BossStudyGame, BossStudyReview를 순서대로 엽니다. 네 씬이 Assets/Settings/BossStudySettings.asset과 하나의 참가자 세션을 공유합니다. ResearchServer의 SQLite가 원본 저장소입니다. 운영 및 검증 방법은 Docs/BossStudy.md에 있습니다.

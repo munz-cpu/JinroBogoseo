@@ -23,6 +23,9 @@ namespace BossTemplate
         [SerializeField, InspectorName("공격 표시 목록")] private ArenaEffect[] effects;
         [SerializeField, InspectorName("섬광 메시")] private Mesh sparkMesh;
         [SerializeField, InspectorName("점프 링 메시")] private Mesh jumpRingMesh;
+        [SerializeField, InspectorName("낙석 먼지 메시")] private Mesh rockDustMesh;
+        [SerializeField, InspectorName("회복 구슬")] private ArenaHealthOrb healthOrb;
+        [SerializeField, InspectorName("전투 효과음 소스")] private AudioSource effectsAudio;
         [Header("낙석")]
         [SerializeField, InspectorName("돌 스프라이트")] private Sprite rockSprite;
         [SerializeField, InspectorName("돌 외형 세트")] private RockAppearance[] fallingRocks;
@@ -33,11 +36,7 @@ namespace BossTemplate
         [SerializeField, Range(0, 2), InspectorName("충돌 화면 흔들림")] private float shakeStrength = 1;
         private Vector3 playerStart, bossStart;
         private float phaseOneHealth;
-        private AudioSource effectsAudio;
-        private Mesh rockDustMesh;
-        private ArenaHealthOrb healthOrb;
         private CinemachineBrain cameraBrain;
-        private CinemachineVirtualCameraBase shakeCamera;
         private readonly CinemachineImpulseDefinition impactImpulse = new CinemachineImpulseDefinition
         {
             ImpulseType = CinemachineImpulseDefinition.ImpulseTypes.Uniform,
@@ -122,13 +121,13 @@ namespace BossTemplate
         }
         private void Awake()
         {
-            rockDustMesh = CreateRockDustMesh();
             if (arenaCamera) cameraBrain = arenaCamera.GetComponent<CinemachineBrain>();
             playerStart = player.transform.position; bossStart = boss.transform.position;
             Player.Initialize(this); Boss.Initialize(this);
             phaseOneHealth = Boss.Health.Maximum;
             Player.Health.InitializeAudio(this);
             Boss.Health.InitializeAudio(this);
+            healthOrb.Initialize(this);
             ResetFight();
         }
 
@@ -138,30 +137,15 @@ namespace BossTemplate
             EndStudyFight();
         }
 
-        private void OnDestroy() => Destroy(rockDustMesh);
-
         internal void ShakeImpact(Vector2 position, Vector2 impulse, bool allowOffscreen = false)
         {
             if (shakeStrength <= 0 || !cameraBrain
-                || !(cameraBrain.ActiveVirtualCamera is CinemachineVirtualCameraBase activeCamera)) return;
+                || cameraBrain.ActiveVirtualCamera == null) return;
 
             if (!allowOffscreen)
             {
                 Vector3 viewport = arenaCamera.WorldToViewportPoint(position);
                 if (viewport.x < -.05f || viewport.x > 1.05f || viewport.y < -.05f || viewport.y > 1.05f) return;
-            }
-            if (shakeCamera != activeCamera)
-            {
-                if (!activeCamera.TryGetComponent(out CinemachineImpulseListener listener))
-                {
-                    listener = activeCamera.gameObject.AddComponent<CinemachineImpulseListener>();
-                    listener.ChannelMask = impactImpulse.ImpulseChannel;
-                    listener.Gain = 1;
-                    listener.ApplyAfter = CinemachineCore.Stage.Noise;
-                    listener.SignalCombinationMode = CinemachineImpulseListener.SignalCombinationModes.UseLargest;
-                    listener.ReactionSettings = default;
-                }
-                shakeCamera = activeCamera;
             }
             impactImpulse.CreateEvent(position, impulse * shakeStrength);
         }
@@ -195,14 +179,7 @@ namespace BossTemplate
 
         internal void DropHealthOrb(Vector2 position, Material material)
         {
-            if (!healthOrb)
-            {
-                var pickup = new GameObject("회복 구슬");
-                pickup.transform.SetParent(transform, true);
-                healthOrb = pickup.AddComponent<ArenaHealthOrb>();
-                healthOrb.Initialize(this, material);
-            }
-            healthOrb.Drop(position);
+            healthOrb.Drop(position, material);
         }
 
         internal void ShowHealthOrbPickup(Vector2 position)
@@ -223,13 +200,7 @@ namespace BossTemplate
 
         internal void PlayEffect(AudioClip clip)
         {
-            if (!clip) return;
-            if (!effectsAudio)
-            {
-                effectsAudio = gameObject.AddComponent<AudioSource>();
-                effectsAudio.playOnAwake = false;
-                effectsAudio.spatialBlend = 0;
-            }
+            if (!clip || !effectsAudio) return;
             effectsAudio.PlayOneShot(clip);
         }
         private void Update()
@@ -312,34 +283,6 @@ namespace BossTemplate
                 paddle ? new Color(1, .76f, .4f, .76f) : new Color(.52f, .87f, 1, .72f), .08f);
             Burst(rockDustMesh, position, new Vector2(1.15f, .7f), new Color(.87f, .72f, .51f), .23f,
                 rebound * 2.5f, 2.4f);
-        }
-
-        private static Mesh CreateRockDustMesh()
-        {
-            // One pooled mesh draws the whole burst, leaving room for attack warnings.
-            const int particleCount = 20;
-            var vertices = new Vector3[particleCount * 4];
-            var triangles = new int[particleCount * 6];
-            for (int i = 0; i < particleCount; i++)
-            {
-                float angle = i * 2.4f;
-                float distance = Mathf.Sqrt((i + .5f) / particleCount) * .45f;
-                var center = new Vector3(Mathf.Cos(angle) * distance, Mathf.Sin(angle) * distance, 0);
-                float halfSize = .015f + (i % 4) * .008f;
-                int v = i * 4;
-                vertices[v] = center + new Vector3(-halfSize, -halfSize, 0);
-                vertices[v + 1] = center + new Vector3(-halfSize, halfSize, 0);
-                vertices[v + 2] = center + new Vector3(halfSize, halfSize, 0);
-                vertices[v + 3] = center + new Vector3(halfSize, -halfSize, 0);
-                int t = i * 6;
-                triangles[t] = v;
-                triangles[t + 1] = v + 1;
-                triangles[t + 2] = v + 2;
-                triangles[t + 3] = v;
-                triangles[t + 4] = v + 2;
-                triangles[t + 5] = v + 3;
-            }
-            return new Mesh { name = "Rock Dust", vertices = vertices, triangles = triangles };
         }
 
         public void GunFlash(Vector2 muzzle, int facing)

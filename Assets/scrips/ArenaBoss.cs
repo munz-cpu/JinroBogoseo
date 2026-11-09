@@ -45,7 +45,7 @@ namespace BossTemplate
         private Color neutralColor;
         private float warningTilt, poseDuration;
         private float giantFollowVelocity;
-        private readonly SpriteRenderer[] fists = new SpriteRenderer[2];
+        [SerializeField, InspectorName("골렘 주먹 렌더러")] private SpriteRenderer[] fists;
         private readonly float[] fistFlashUntil = new float[2];
         private readonly bool[] fistBusy = new bool[2];
         private bool holdBothFists;
@@ -72,16 +72,11 @@ namespace BossTemplate
                 neutralSortingOrder = appearance.sortingOrder;
                 neutralColor = appearance.color;
             }
-            for (int i = 0; i < fists.Length; i++)
+            foreach (var fist in fists)
             {
-                var fist = new GameObject(i == 0 ? "골렘 오른손" : "골렘 왼손").AddComponent<SpriteRenderer>();
-                fist.transform.SetParent(arena.transform, true);
                 fist.sprite = fistSprite ? fistSprite : body.sprite;
                 fist.transform.localScale = Vector3.one * (FistHeight / fist.sprite.bounds.size.y);
                 fist.sharedMaterial = appearance ? appearance.sharedMaterial : body.sharedMaterial;
-                fist.sortingOrder = 2;
-                fist.enabled = false;
-                fists[i] = fist;
             }
         }
 

@@ -31,7 +31,8 @@ def snapshot(store):
                 ])
         for row in db.execute("SELECT payload FROM surveys ORDER BY participant_id"):
             s = json.loads(row[0])
-            a, i, d, f, r, x = s["scores"] or [None] * 6
+            scores = s["scores"]
+            a, i, d, f, r, x = scores + [None] * (6 - len(scores))
             rows["Surveys"].append([
                 s["participant_id"], s["cleared"], s["actual_attempts"], a, i, f, x, r, d, s["skipped"],
             ])

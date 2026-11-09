@@ -115,8 +115,8 @@ class Survey(Payload):
 
     @model_validator(mode="after")
     def valid_scores(self):
-        if len(self.scores) != (0 if self.skipped else 6):
-            raise ValueError("expected six ratings or an empty skipped survey")
+        if len(self.scores) not in ((0,) if self.skipped else (1, 6)):
+            raise ValueError("expected one rating, six legacy scores, or an empty skipped response")
         return self
 
 

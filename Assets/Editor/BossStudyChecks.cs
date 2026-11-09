@@ -67,7 +67,7 @@ internal static class BossStudyChecks
             if (current is IEnumerator nested) stack.Push(nested);
             else yield return current;
         }
-        Report("PASS: start → game → review, one session, consent gate, assignment, UUID reload, early victory, offline retry, survey, withdrawal");
+        Report("PASS: start → intro → game → review, one session, consent gate, assignment, UUID reload, early victory, offline retry, rating, withdrawal");
     }
 
     private static void Report(string result)
@@ -78,9 +78,17 @@ internal static class BossStudyChecks
 
     private static IEnumerator Smoke(StudySession study)
     {
-        Check(SceneManager.GetActiveScene().path == StudySceneEntry.StartPath && study.Screen == StudyScreen.Consent,
-            "Consent must begin in the start scene");
+        Check(SceneManager.GetActiveScene().path == StudySceneEntry.StartPath && study.Screen == StudyScreen.Title,
+            "The start scene should show the title");
         Check(!UnityEngine.Object.FindAnyObjectByType<BossArena>(), "Start scene should have no arena");
+        study.OpenIntro();
+        yield return Until(() => SceneManager.GetActiveScene().path == StudySceneEntry.IntroPath
+            && study.Screen == StudyScreen.Consent, "Consent must open in the separate intro scene");
+        var panel = UnityEngine.Object.FindAnyObjectByType<StudyPanel>();
+        var consentButton = Array.Find(panel.GetComponentsInChildren<UnityEngine.UI.Button>(),
+            button => button.name == "연구 참여에 동의하고 시작");
+        Check(consentButton && !consentButton.interactable,
+            "Consent button must be visible and disabled before the participant can enroll");
         Check(UnityEngine.EventSystems.EventSystem.current, "Study UI input module missing");
         var settings = UnityEngine.Object.Instantiate(AssetDatabase.LoadAssetAtPath<StudySettings>(SettingsPath));
         settings.protocol.apiUrl = Endpoint;
@@ -89,6 +97,16 @@ internal static class BossStudyChecks
         var storage = new StudyStorage(Path.Combine(Application.temporaryCachePath, "BossStudySmoke-" + Guid.NewGuid().ToString("N")));
         ReplacePrivate(study, "storage", storage);
         ReplacePrivate(study, "asset", settings);
+
+        study.Decline();
+        Check(study.Screen == StudyScreen.Declined && storage.Load().declined, "Decline must persist");
+        var reopenButton = Array.Find(panel.GetComponentsInChildren<UnityEngine.UI.Button>(),
+            button => button.name == "참여 안내 다시 보기");
+        Check(reopenButton && reopenButton.interactable, "Declined participants must be able to reopen consent");
+        reopenButton.onClick.Invoke();
+        var reopened = storage.Load();
+        Check(study.Screen == StudyScreen.Consent && !reopened.declined && reopened.participant == null,
+            "Reopening consent must clear the decline without enrolling");
 
         study.Enroll("undisclosed", "undisclosed");
         yield return Until(() => study.Screen == StudyScreen.Ready && SceneManager.GetActiveScene().path == StudySceneEntry.GamePath
@@ -119,8 +137,8 @@ internal static class BossStudyChecks
         yield return Until(() => study.SyncStatus.Length > 0, "Offline attempt transmission");
         study.Protocol.apiUrl = Endpoint;
         yield return Until(() => !study.HasPending, "Automatic retry after connectivity returns");
-        study.SubmitSurvey(new[] { 5, 4, 3, 4, 5, 2 }, false);
-        yield return Until(() => study.Screen == StudyScreen.Debrief && !study.HasPending, "Persist survey on real FastAPI");
+        study.SubmitRating(5);
+        yield return Until(() => study.Screen == StudyScreen.Debrief && !study.HasPending, "Persist rating on real FastAPI");
         study.Withdraw();
         yield return Until(() => study.Screen == StudyScreen.Withdrawal && !study.WithdrawalPending, "Confirmed withdrawal");
         saved = storage.Load();

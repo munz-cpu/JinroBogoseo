@@ -13,39 +13,34 @@ namespace BossTemplate
     [Serializable]
     public sealed class StudyProtocol
     {
+        [Header("서버와 연구 버전")]
         public string apiUrl = "http://127.0.0.1:8000";
-        public string settingsVersion = "combat-v1";
-        public string consentVersion = "consent-v1";
+        public string settingsVersion = "combat-v2";
+        public string consentVersion = "consent-v3";
+        [Header("동의와 사후 안내")]
         [TextArea(4, 10)] public string consentNotice =
-            "이 학교 연구는 게임 플레이 경험을 분석합니다. 도전 횟수, 플레이 시간, 피해량, 게임 진행 상태, " +
-            "난이도 변경 기록, 연령대와 게임 빈도 및 설문 응답을 수집합니다. 일부 연구 가설과 실험 조건은 종료 후 설명합니다. " +
-            "참여 여부는 자유이며 언제든 중단할 수 있습니다. UUID로 기록을 연결합니다.";
+            "보스전에 도전해 보고, 공격을 피하는 재미와 전투 난이도가 어땠는지 알려주세요. " +
+            "학교 연구용 플레이테스트예요. 자세한 연구 질문과 플레이 조건은 끝난 뒤 알려드려요.\n\n" +
+            "도전 횟수, 시간, 피해량, 전투 진행과 난이도 조정 기록, 연령대, 게임 빈도, 별점을 참가자 ID로 연결해 기록해요. " +
+            "참여는 자유이고 언제든 그만둘 수 있어요.";
         public string retention = "";
         public string contact = "";
         [TextArea(3, 8)] public string debrief =
-            "이 연구는 보스전의 반복 도전 횟수와 성취감의 관계를 알아봅니다. 참가자마다 목표 횟수를 무작위로 배정했습니다. " +
-            "게임은 도전 사이에 전투 기록과 목표까지 남은 횟수를 바탕으로 보스의 공격과 체력을 조절했습니다. " +
-            "목표 횟수에 도달하기 전에도 클리어할 수 있었습니다. 아래 버튼으로 연구 데이터 제외를 요청할 수 있습니다.";
-        public string achievementCleared = "보스를 클리어하는 과정에서 성취감을 느꼈다.";
-        public string achievementStopped = "보스에 도전하는 과정에서 성취감을 느꼈다.";
-        public string immersion = "게임에 몰입할 수 있었다.";
-        public string difficulty = "보스의 난이도가 적절했다고 느꼈다.";
-        public string fairness = "보스의 공격이 공정하다고 느꼈다.";
-        public string retryIntention = "다시 도전하고 싶다는 생각이 들었다.";
-        public string frustration = "플레이 과정에서 좌절감을 느꼈다.";
+            "플레이해 주셔서 고마워요! 이번 테스트에서는 보스에게 몇 번 도전했는지와 플레이 중 느낀 성취감이 어떤 관계인지 살펴봐요. " +
+            "이 질문을 미리 알면 플레이 방식에 영향을 줄 수 있어서 끝난 뒤에 알려드려요.\n\n" +
+            "목표 도전 횟수는 참가자마다 무작위로 배정됐어요. 도전 사이에 전투 기록과 목표까지 남은 횟수에 따라 보스의 공격과 체력이 조정됐고, " +
+            "목표 횟수 전에도 클리어할 수 있었어요. 원하면 아래 버튼으로 연구 데이터 제외를 요청할 수 있어요.";
+        [Header("연구 난이도와 전투 배수")]
         [Range(0, 1)] public float minimumLevel = 0;
         [Range(0, 1)] public float maximumLevel = 1;
         [Range(0, 1)] public float initialLevel = .48f;
         [Range(.01f, .25f)] public float maximumStep = .12f;
+        [Tooltip("X는 낮은 난이도, Y는 높은 난이도의 보스 체력 배수입니다.")]
         public Vector2 bossHealth = new Vector2(.72f, 1.24f);
+        [Tooltip("각 항목의 X는 낮은 난이도, Y는 높은 난이도의 배수입니다.")]
         public PatternRange defaultPattern = new PatternRange();
+        [Tooltip("Pattern Id가 일치하는 공격에 개별 배수를 적용합니다. 예: fist_sweep")]
         public PatternRange[] patternOverrides = Array.Empty<PatternRange>();
-
-        internal string[] Questions(bool cleared) => new[]
-        {
-            cleared ? achievementCleared : achievementStopped,
-            immersion, difficulty, fairness, retryIntention, frustration
-        };
 
         internal bool IsConfigured =>
             !string.IsNullOrWhiteSpace(retention) && !string.IsNullOrWhiteSpace(contact)

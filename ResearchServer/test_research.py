@@ -124,6 +124,18 @@ class StudyTest(unittest.TestCase):
             self.assertEqual(result["dropout_rate"], 1)
             self.assertIsNone(result["mean_absolute_error"])
 
+    def test_single_rating_syncs_to_achievement_column(self):
+        self.assertEqual(self.post("/attempts", self.attempt()).status_code, 204)
+        rating = {**self.survey(), "scores": [4]}
+        self.assertEqual(self.post("/surveys", {**rating, "scores": [4, 4]}).status_code, 422)
+        self.assertEqual(self.post("/surveys", {**rating, "skipped": True}).status_code, 422)
+        for _ in range(2):
+            self.assertEqual(self.post("/surveys", rating).status_code, 204)
+
+        session = FakeSheets()
+        SheetsMirror(self.client.app.state.store, "fake-sheet", 30).sync(session)
+        self.assertEqual(session.rows["Surveys"][1][3:9], [4, None, None, None, None, None])
+
     def test_withdrawal_and_sheets_retry(self):
         attempt = self.attempt()
         self.assertEqual(self.post("/attempts", attempt).status_code, 204)

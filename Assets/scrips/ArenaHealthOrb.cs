@@ -7,41 +7,15 @@ namespace BossTemplate
         private const float HealAmount = 10;
         private const float Lifetime = 12;
         private BossArena arena;
-        private Sprite sprite;
-        private Texture2D texture;
+        [SerializeField] private SpriteRenderer appearance;
         private Vector2 position;
         private float expires;
 
-        internal void Initialize(BossArena owner, Material material)
-        {
-            arena = owner;
-            const int size = 24;
-            texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
-            {
-                filterMode = FilterMode.Point,
-                wrapMode = TextureWrapMode.Clamp
-            };
-            var pixels = new Color32[size * size];
-            for (int y = 0; y < size; y++)
-            for (int x = 0; x < size; x++)
-            {
-                Vector2 offset = new Vector2(x + .5f, y + .5f) / (size * .5f) - Vector2.one;
-                float radius = offset.magnitude;
-                Color color = Color.Lerp(new Color(.92f, 1, .78f), new Color(.13f, 1, .32f), radius * 1.5f);
-                color.a = 1 - Mathf.SmoothStep(0, 1, (radius - .46f) / .54f);
-                pixels[y * size + x] = color;
-            }
-            texture.SetPixels32(pixels);
-            texture.Apply(false, true);
-            sprite = Sprite.Create(texture, new Rect(0, 0, size, size), Vector2.one * .5f, size);
-            var renderer = gameObject.AddComponent<SpriteRenderer>();
-            renderer.sprite = sprite;
-            renderer.sharedMaterial = material;
-            renderer.sortingOrder = 4;
-        }
+        internal void Initialize(BossArena owner) => arena = owner;
 
-        internal void Drop(Vector2 origin)
+        internal void Drop(Vector2 origin, Material material)
         {
+            appearance.sharedMaterial = material;
             Bounds ground = arena.GroundBounds;
             position = new Vector2(Mathf.Clamp(origin.x, ground.min.x + .5f, ground.max.x - .5f),
                 Mathf.Max(origin.y, arena.GroundY + .8f));
@@ -72,12 +46,6 @@ namespace BossTemplate
             player.Health.Restore(HealAmount);
             arena.ShowHealthOrbPickup(display);
             gameObject.SetActive(false);
-        }
-
-        private void OnDestroy()
-        {
-            Destroy(sprite);
-            Destroy(texture);
         }
     }
 }

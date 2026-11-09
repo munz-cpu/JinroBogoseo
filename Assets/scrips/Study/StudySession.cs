@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.IO;
-using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using UnityEngine;
@@ -10,10 +9,11 @@ using UnityEngine.SceneManagement;
 
 namespace BossTemplate
 {
-    internal enum StudyScreen { Consent, Waiting, Ready, Combat, Survey, Debrief, Declined, Withdrawal, Error }
+    internal enum StudyScreen { Consent, Waiting, Ready, Combat, Survey, Debrief, Declined, Withdrawal, Error, Title }
 
     internal sealed class StudySession : MonoBehaviour
     {
+        internal static StudySession Current { get; private set; }
         internal static readonly BossPattern[] PhaseOne =
         {
             BossPattern.ground_barrage, BossPattern.fault_line, BossPattern.crossfire, BossPattern.ceiling_collapse,
@@ -35,7 +35,7 @@ namespace BossTemplate
         private StudyStage stage;
         private string syncStatus = "";
         internal StudyScreen Screen { get; private set; }
-        internal bool ConsumesShot(Vector2 pointer) => panel.ConsumesShot(pointer);
+        internal bool ConsumesShot(Vector2 pointer) => panel && panel.ConsumesShot(pointer);
         internal bool InCombat => Screen == StudyScreen.Combat;
         internal bool Cleared => state.cleared;
         internal bool LostLast => state.recent.Count > 0 && state.recent[state.recent.Count - 1].result == "defeat";
@@ -47,20 +47,37 @@ namespace BossTemplate
         internal float BossHealthFactor => state?.active?.difficulty.boss_health ?? 1;
         internal static string Now() => DateTime.UtcNow.ToString("O");
 
-        internal void EnterScene(StudyStage sceneStage, BossArena owner, StudySettings settings)
+#if UNITY_EDITOR
+        internal StudyAssignment InspectorAssignment => state?.assignment;
+        internal int InspectorAttemptCount => state?.attempts ?? 0;
+        internal AttemptRecord InspectorActiveAttempt => state?.active;
+        internal AttemptRecord InspectorLastAttempt => state?.recent.Count > 0 ? state.recent[state.recent.Count - 1] : null;
+        internal float InspectorElapsedSeconds => Time.realtimeSinceStartup - startTime;
+        internal float InspectorBossHealthRemaining => arena ? arena.StudyBossHealthRemaining : 1;
+#endif
+
+        internal void Activate()
+        {
+            Current = this;
+            DontDestroyOnLoad(gameObject);
+            gameObject.SetActive(true);
+        }
+
+        internal void EnterScene(StudyStage sceneStage, BossArena owner, StudySettings settings, StudyPanel scenePanel)
         {
             stage = sceneStage;
             arena = owner;
+            panel = scenePanel;
+            panel.Bind(this, settings.font);
             changingScene = false;
             if (arena) arena.AttachStudy(this);
-            if (panel != null)
+            if (storage != null)
             {
                 Show(Screen);
                 return;
             }
             asset = settings;
             storage = new StudyStorage(Application.persistentDataPath);
-            panel = new StudyPanel(this, settings.font);
             try
             {
                 state = storage.Load();
@@ -85,7 +102,12 @@ namespace BossTemplate
             else if (state.surveyDue) Show(StudyScreen.Survey);
             else if (state.assignment != null) Show(StudyScreen.Ready);
             else if (state.participant != null) Show(StudyScreen.Waiting);
-            else Show(StudyScreen.Consent);
+            else Show(stage == StudyStage.Start ? StudyScreen.Title : StudyScreen.Consent);
+        }
+
+        internal void OpenIntro()
+        {
+            if (Screen == StudyScreen.Title) Show(StudyScreen.Consent);
         }
 
         internal void Enroll(string age, string frequency)
@@ -109,6 +131,13 @@ namespace BossTemplate
             if (Screen != StudyScreen.Consent) return;
             state.declined = true;
             if (Persist()) Show(StudyScreen.Declined);
+        }
+
+        internal void ReopenConsent()
+        {
+            if (Screen != StudyScreen.Declined) return;
+            state.declined = false;
+            if (Persist()) Show(StudyScreen.Consent);
         }
 
         internal void BeginAttempt()
@@ -220,14 +249,14 @@ namespace BossTemplate
             }
         }
 
-        internal void SubmitSurvey(int[] scores, bool skipped)
+        internal void SubmitRating(int? rating)
         {
-            if (Screen != StudyScreen.Survey || (!skipped && scores.Any(s => s < 1 || s > 5))) return;
+            if (Screen != StudyScreen.Survey || rating is < 1 or > 5) return;
             Enqueue("surveys", new SurveyRecord
             {
                 participant_id = state.participant.participant_id, settings_version = state.participant.settings_version,
                 submitted_at = Now(), actual_attempts = state.attempts, cleared = state.cleared,
-                skipped = skipped, scores = skipped ? Array.Empty<int>() : scores
+                skipped = !rating.HasValue, scores = rating.HasValue ? new[] { rating.Value } : Array.Empty<int>()
             });
             state.surveyDue = false;
             state.debrief = true;
@@ -386,7 +415,7 @@ namespace BossTemplate
         private void UpdateStatus(string message)
         {
             syncStatus = message;
-            panel.RefreshStatus();
+            if (panel) panel.RefreshStatus();
         }
 
         private void Show(StudyScreen screen)
@@ -397,6 +426,7 @@ namespace BossTemplate
             {
                 StudyScreen.Ready or StudyScreen.Combat => StudyStage.Game,
                 StudyScreen.Survey or StudyScreen.Debrief or StudyScreen.Withdrawal => StudyStage.Review,
+                StudyScreen.Consent or StudyScreen.Waiting or StudyScreen.Declined => StudyStage.Intro,
                 StudyScreen.Error => stage,
                 _ => StudyStage.Start
             };
@@ -439,6 +469,9 @@ namespace BossTemplate
             }
         }
 
-        private void OnDestroy() => panel?.Dispose();
+        private void OnDestroy()
+        {
+            if (Current == this) Current = null;
+        }
     }
 }

@@ -6,13 +6,14 @@ Unity 6000.6.3f1, URP 17.6, Cinemachine 6.6, Input System 1.20, uGUI 2.6을 사�
 
 | 씬 | 역할 |
 | --- | --- |
-| `Assets/Scenes/BossStudyStart.unity` | 게임 시작, 참여 안내·동의, 참가자 정보 입력과 그룹 배정 |
+| `Assets/Scenes/BossStudyStart.unity` | 보스전 제목과 시작 버튼 |
+| `Assets/Scenes/BossStudyIntro.unity` | 플레이테스트 안내·동의, 참가자 정보 입력과 그룹 배정 |
 | `Assets/Scenes/BossStudyGame.unity` | 게임 진행, 보스전과 재도전, 난이도 조절 및 도전 기록 |
-| `Assets/Scenes/BossStudyReview.unity` | 후기, 최종 설문, 사후 안내와 데이터 제외 |
+| `Assets/Scenes/BossStudyReview.unity` | 별점, 사후 안내와 데이터 제외 |
 
-기본 빌드는 시작 씬에서 열립니다. 세 씬은 하나의 참가자 세션과 전송 대기열을 공유합니다. 재실행 시 저장 상태에 따라 진행 씬이나 후기 씬으로 이동합니다. 원본 `Assets/Scenes/BossFight.unity`는 Unity Editor에서 일반 전투용으로 열 수 있습니다. 게임 진행 씬은 원본의 전투 코드와 에셋을 사용하며 1페이즈 9개 공격과 별도 낙석, 2페이즈 5개 공격을 총 15개 ID로 추적합니다.
+기본 빌드는 시작 씬에서 열립니다. 네 씬은 하나의 참가자 세션과 전송 대기열을 공유합니다. 재실행 시 저장 상태에 따라 해당 씬으로 이동합니다. 원본 `Assets/Scenes/BossFight.unity`는 Unity Editor에서 일반 전투용으로 열 수 있습니다. 게임 진행 씬은 원본의 전투 코드와 에셋을 사용하며 1페이즈 9개 공격과 별도 낙석, 2페이즈 5개 공격을 총 15개 ID로 추적합니다.
 
-안내 및 동의 → 연령대·게임 빈도 선택 및 서버 배정 → 도전·재도전 → 승리 또는 자발적 종료 → 최종 설문(건너뛰기 가능) → 사후 안내 순서입니다. 실제 목표 횟수와 그룹은 플레이 화면에서 숨깁니다. 전투 중 오른쪽 아래의 **참여 종료**로 설문을 열 수 있습니다. 사후 안내에는 참가자 UUID, 문의처, 제외 요청 버튼이 있습니다.
+안내 및 동의 → 연령대·게임 빈도 선택 및 서버 배정 → 도전·재도전 → 승리 또는 자발적 종료 → 성취감 별점 1~5점(건너뛰기 가능) → 사후 안내 순서입니다. 실제 목표 횟수와 그룹은 플레이 화면에서 숨깁니다. 전투 중 오른쪽 아래의 **참여 종료**로 별점 화면을 열 수 있습니다. 사후 안내에는 참가자 UUID, 문의처, 제외 요청 버튼이 있습니다.
 
 첫 등록은 서버 연결이 필요합니다. UUID와 임의의 256비트 참가자 토큰을 동의 직후 저장한 다음 등록합니다. 서버 응답이 유실돼도 같은 UUID와 토큰으로 재등록하며 배정은 SQLite에서 유지합니다. 배정 후에는 재실행하거나 오프라인 상태에서도 재도전·설문을 진행할 수 있습니다. 도전 시작, 도전 종료, 설문 제출, 전송 확인을 `Application.persistentDataPath/boss-study-v1.json`에 원자적으로 교체 저장합니다. 오프라인 요청은 저장 순서대로 재전송하며 연결 오류·408·429·5xx는 최대 60초 간격으로 재시도합니다. 그 밖의 4xx는 오류를 표시하고 수동 재시도를 기다립니다. 데이터 제외 요청은 미전송 도전·설문을 지우고 우선 처리합니다. 최초 등록 응답을 받기 전에 제외를 누르면 같은 자격 증명으로 등록 상태를 확인한 뒤 제외합니다.
 
@@ -20,15 +21,15 @@ Unity 6000.6.3f1, URP 17.6, Cinemachine 6.6, Input System 1.20, uGUI 2.6을 사�
 
 ## Unity Inspector 설정
 
-1. Project 창에서 `Assets/Settings/BossStudySettings.asset`을 선택합니다. 이 에셋은 세 씬의 **Study Scene → Study Scene Entry → 연구 설정**에 연결되어 있습니다. `BossStudyStart`를 열고 Play를 누르면 연구 안내가 표시됩니다.
-2. **Protocol**에 승인된 동의 안내, 보관 기간, 담당자 연락처, 사후 안내, 설문 문항을 입력합니다. 보관 기간과 연락처가 비어 있으면 참여 버튼을 표시하지 않습니다. 저장된 동의는 자동으로 새 문구로 교체하지 않습니다.
+1. Project 창에서 `Assets/Settings/BossStudySettings.asset`을 선택합니다. 이 에셋은 네 씬의 **Study Scene → Study Scene Entry → 연구 설정**에 연결되어 있습니다. `BossStudyStart`를 열고 Play한 뒤 **시작**을 누르면 `BossStudyIntro`에서 연구 안내가 표시됩니다.
+2. **Protocol**에 승인된 동의 안내, 보관 기간(**Retention**), 담당자 연락처(**Contact**), 사후 안내를 입력합니다. 설정을 완료하고 참가자가 연령대와 게임 빈도를 선택하면 동의 버튼이 활성화됩니다. 저장된 동의는 자동으로 새 문구로 교체하지 않습니다.
 3. **Api Url**을 설정합니다. Editor와 Development Build의 로컬 테스트는 기본값 `http://127.0.0.1:8000`을 사용합니다. 참가자 배포 빌드에는 HTTPS API 주소를 입력합니다. Player Settings의 HTTP 설정은 **Development Only**이며, 연구 클라이언트는 개발 환경에서도 루프백 주소의 평문 HTTP만 허용합니다. [Unity PlayerSettings HTTP 설정](https://docs.unity3d.com/6000.0/Documentation/ScriptReference/PlayerSettings-insecureHttpOption.html)
 4. **Minimum Level**, **Maximum Level**, **Initial Level**, **Maximum Step**으로 난이도를 조정합니다. **Boss Health**, **Default Pattern**, **Pattern Overrides**의 X는 낮은 난이도 값, Y는 높은 난이도 값입니다. **Pattern Id**에는 `StudyRecords.cs`의 식별자(예: `fist_sweep`)를 입력합니다. 공격 간격은 배수이므로 높은 난이도를 더 촘촘하게 하려면 Y를 작게 설정합니다.
 5. 동의 문구나 보관 조건 변경 시 **Consent Version**, 전투 설정·설문 변경 시 **Settings Version**, 서버 그룹·비율 변경 시 **RESEARCH_ASSIGNMENT_VERSION**을 갱신합니다. 참가자 등록 시 클라이언트 설정 사본을 로컬에 저장하므로 활성 연구 중 기존 참가자의 API 주소와 실험 조건은 해당 사본을 따릅니다. 버전별로 승인된 문구, Inspector 설정과 서버 그룹 설정을 보관합니다.
 
 기존 플레이어 이동·회피·공격과 보스 페이즈 전환을 재사용합니다. 연구 모드에서는 Enter 자동 재시작과 Editor 무적·페이즈 건너뛰기 메뉴를 비활성화합니다. 한 참가자 흐름은 하나의 로컬 파일에 대응합니다. 신규 참가자가 같은 PC를 쓸 때는 다른 프로필을 사용하고, 테스트 파일은 미전송 기록이 없음을 확인한 테스트 환경에서만 정리합니다.
 
-참가자용 빌드에는 기본 Scene List를 사용합니다. 빌드 프로필이 자체 씬 목록을 사용한다면 `BossStudyStart`, `BossStudyGame`, `BossStudyReview`를 이 순서대로 등록합니다.
+참가자용 빌드에는 기본 Scene List를 사용합니다. 빌드 프로필이 자체 씬 목록을 사용한다면 `BossStudyStart`, `BossStudyIntro`, `BossStudyGame`, `BossStudyReview`를 이 순서대로 등록합니다.
 
 ## DDA 계산
 
@@ -72,7 +73,7 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 | --- | --- |
 | `POST /participants` | UUID, 연령대, 게임 빈도, 명시적 동의, UTC 동의 시각, 동의·실험 버전. 응답은 그룹, 목표 도전 횟수, 배정 버전. SQLite에는 토큰의 SHA-256 해시 저장. |
 | `POST /attempts` | UUID, 도전 UUID, 1부터 시작하는 연속 도전 번호, 그룹·목표·버전, UTC 시작·종료, 경과 초, 양측 실제 체력 손실 합계, 두 페이즈의 남은 HP 비율, 패턴 실행·피격·평균 피해, 난이도 스냅샷·적용 시각·이유, 승리 및 종료 사유(`cleared`, `defeat`, `stopped`, `interrupted`). |
-| `POST /surveys` | UUID, 설정 버전, UTC 제출 시각, 승리 여부·실제 횟수, 응답 생략 여부, 여섯 점수(성취감, 몰입, 난이도 적절성, 공정성, 재도전 의향, 좌절감 순). 생략 시 점수 배열은 비어 있음. |
+| `POST /surveys` | UUID, 설정 버전, UTC 제출 시각, 승리 여부·실제 횟수, 응답 생략 여부, 성취감 별점 한 개. 생략 시 점수 배열은 비어 있음. 기존 여섯 점수 형식도 수신하며, 새 별점은 시트의 `achievement_score`에 기록함. |
 | `POST /withdraw` | UUID와 참가자 Bearer 토큰으로 데이터 제외. 성공 204, 같은 요청 반복 가능. |
 | `GET /health` | SQLite 접근 가능 시 `{"status":"ok"}`. 참가자 기록은 공개 API로 읽을 수 없음. |
 

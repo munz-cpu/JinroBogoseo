@@ -22,7 +22,7 @@ namespace BossTemplate
         internal const float PlantedHitRadius = .8f * RockSizeMultiplier;
         private BossArena arena;
         private SpriteRenderer surface;
-        private SpriteRenderer rockShell;
+        [SerializeField, InspectorName("돌 외곽 렌더러")] private SpriteRenderer rockShell;
         private Sprite shellSprite;
         private Sprite defaultSprite;
         private int defaultSortingOrder;
@@ -272,13 +272,7 @@ namespace BossTemplate
 
         private void ShowRockShell()
         {
-            if (!shellSprite) return;
-            if (!rockShell)
-            {
-                var layer = new GameObject("Rock Shell");
-                layer.transform.SetParent(transform, false);
-                rockShell = layer.AddComponent<SpriteRenderer>();
-            }
+            if (!shellSprite || !rockShell) return;
             rockShell.sprite = shellSprite;
             rockShell.sharedMaterial = surface.sharedMaterial;
             rockShell.sortingLayerID = surface.sortingLayerID;

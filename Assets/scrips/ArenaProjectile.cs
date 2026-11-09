@@ -11,6 +11,7 @@ namespace BossTemplate
         private const float ExplosionRadius = 2.2f;
         // Behind the ground tiles (0), in front of the scenery.
         private const int PlantedSortingOrder = -1;
+        internal const int PlantedBodySortingOrder = PlantedSortingOrder - 1;
         private const float RockSizeMultiplier = 1.55f;
         private const float AirHockeyMaxSpeed = 31f;
         internal const float MineLandingOffset = .25f * RockSizeMultiplier;
@@ -282,7 +283,7 @@ namespace BossTemplate
             rockShell.sharedMaterial = surface.sharedMaterial;
             rockShell.sortingLayerID = surface.sortingLayerID;
             rockShell.sortingOrder = PlantedSortingOrder;
-            surface.sortingOrder = PlantedSortingOrder - 1;
+            surface.sortingOrder = PlantedBodySortingOrder;
             normalColor = Color.black;
             rockShell.enabled = true;
         }

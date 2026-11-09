@@ -32,14 +32,15 @@ namespace BossTemplate
             this.session = session;
             this.font = font ? font : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             canvas = new GameObject("연구 참가 화면", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
+            canvas.transform.SetParent(session.transform, false);
             canvas.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay;
             canvas.GetComponent<Canvas>().sortingOrder = 100;
             var scaler = canvas.GetComponent<CanvasScaler>();
             scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
             scaler.referenceResolution = new Vector2(1280, 720);
             scaler.matchWidthOrHeight = 0;
-            if (!UnityEngine.Object.FindAnyObjectByType<EventSystem>())
-                events = new GameObject("연구 화면 입력", typeof(EventSystem), typeof(InputSystemUIInputModule));
+            events = new GameObject("연구 화면 입력", typeof(EventSystem), typeof(InputSystemUIInputModule));
+            events.transform.SetParent(session.transform, false);
         }
 
         internal bool ConsumesShot(Vector2 pointer) =>
@@ -111,7 +112,7 @@ namespace BossTemplate
                     if (session.WithdrawalPending) NetworkControls();
                     break;
                 case StudyScreen.Error:
-                    Heading("로컬 기록에 접근할 수 없습니다");
+                    Heading("연구를 계속할 수 없습니다");
                     Label(content, "게임을 다시 실행하세요. 문제가 계속되면 연구 담당자에게 문의하세요.");
                     break;
             }

@@ -6,7 +6,6 @@ namespace BossTemplate
     [CreateAssetMenu(menuName = "Boss Arena/Study Settings")]
     public sealed class StudySettings : ScriptableObject
     {
-        public bool enabledForResearch = true;
         public Font font;
         public StudyProtocol protocol = new StudyProtocol();
     }

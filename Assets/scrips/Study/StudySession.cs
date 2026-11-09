@@ -6,6 +6,7 @@ using System.Security.Cryptography;
 using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
+using UnityEngine.SceneManagement;
 
 namespace BossTemplate
 {
@@ -30,7 +31,8 @@ namespace BossTemplate
         private StudyPanel panel;
         private float startTime, checkpointAt, nextSend;
         private int failures;
-        private bool sending, fatal, permanentError;
+        private bool sending, fatal, permanentError, changingScene, quitting;
+        private StudyStage stage;
         private string syncStatus = "";
         internal StudyScreen Screen { get; private set; }
         internal bool ConsumesShot(Vector2 pointer) => panel.ConsumesShot(pointer);
@@ -45,9 +47,17 @@ namespace BossTemplate
         internal float BossHealthFactor => state?.active?.difficulty.boss_health ?? 1;
         internal static string Now() => DateTime.UtcNow.ToString("O");
 
-        internal void Initialize(BossArena owner, StudySettings settings)
+        internal void EnterScene(StudyStage sceneStage, BossArena owner, StudySettings settings)
         {
+            stage = sceneStage;
             arena = owner;
+            changingScene = false;
+            if (arena) arena.AttachStudy(this);
+            if (panel != null)
+            {
+                Show(Screen);
+                return;
+            }
             asset = settings;
             storage = new StudyStorage(Application.persistentDataPath);
             panel = new StudyPanel(this, settings.font);
@@ -103,7 +113,7 @@ namespace BossTemplate
 
         internal void BeginAttempt()
         {
-            if (Screen != StudyScreen.Ready || state.assignment == null) return;
+            if (Screen != StudyScreen.Ready || state.assignment == null || !arena || changingScene) return;
             string now = Now();
             int number = state.attempts + 1;
             var difficulty = AdaptiveDifficulty.Choose(Protocol, state.recent, number,
@@ -205,7 +215,7 @@ namespace BossTemplate
             Enqueue("attempts", attempt);
             if (Persist())
             {
-                arena.EndStudyFight();
+                if (arena) arena.EndStudyFight();
                 RestoreScreen();
             }
         }
@@ -278,7 +288,7 @@ namespace BossTemplate
         {
             fatal = true;
             Debug.LogError("Study storage unavailable (" + error.GetType().Name + ").");
-            arena.EndStudyFight();
+            if (arena) arena.EndStudyFight();
             Show(StudyScreen.Error);
         }
 
@@ -382,7 +392,32 @@ namespace BossTemplate
         private void Show(StudyScreen screen)
         {
             Screen = screen;
-            panel.Render(screen);
+            if (quitting || changingScene) return;
+            var destination = screen switch
+            {
+                StudyScreen.Ready or StudyScreen.Combat => StudyStage.Game,
+                StudyScreen.Survey or StudyScreen.Debrief or StudyScreen.Withdrawal => StudyStage.Review,
+                StudyScreen.Error => stage,
+                _ => StudyStage.Start
+            };
+            if (destination == stage)
+            {
+                panel.Render(screen);
+                return;
+            }
+
+            string path = StudySceneEntry.ScenePath(destination);
+            string sceneName = Path.GetFileNameWithoutExtension(path);
+            if (!Application.CanStreamedLevelBeLoaded(sceneName))
+            {
+                Debug.LogError("Study scene is missing from Build Settings: " + path);
+                fatal = true;
+                Screen = StudyScreen.Error;
+                panel.Render(Screen);
+                return;
+            }
+            changingScene = true;
+            SceneManager.LoadSceneAsync(sceneName, LoadSceneMode.Single);
         }
 
         private void OnApplicationPause(bool paused)
@@ -396,6 +431,7 @@ namespace BossTemplate
 
         private void OnApplicationQuit()
         {
+            quitting = true;
             if (InCombat && !fatal)
             {
                 string result = arena.CombatEnded ? (arena.Player.Health.Dead ? "defeat" : "cleared") : "interrupted";

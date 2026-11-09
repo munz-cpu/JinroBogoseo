@@ -2,7 +2,15 @@
 
 ## 프로젝트와 참가 흐름
 
-Unity 6000.6.3f1, URP 17.6, Cinemachine 6.6, Input System 1.20, uGUI 2.6을 사용합니다. 연구용 `Assets/Scenes/BossStudy.unity`는 기존 전투 코드와 에셋을 공유하는 독립 씬입니다. 일반 플레이와 기본 빌드는 `Assets/Scenes/BossFight.unity`에서 바로 전투를 시작합니다. 연구 씬은 1페이즈 9개 공격과 별도 낙석, 2페이즈 5개 공격을 총 15개 ID로 추적합니다.
+Unity 6000.6.3f1, URP 17.6, Cinemachine 6.6, Input System 1.20, uGUI 2.6을 사용합니다. 연구 플레이는 아래 세 씬으로 진행됩니다.
+
+| 씬 | 역할 |
+| --- | --- |
+| `Assets/Scenes/BossStudyStart.unity` | 게임 시작, 참여 안내·동의, 참가자 정보 입력과 그룹 배정 |
+| `Assets/Scenes/BossStudyGame.unity` | 게임 진행, 보스전과 재도전, 난이도 조절 및 도전 기록 |
+| `Assets/Scenes/BossStudyReview.unity` | 후기, 최종 설문, 사후 안내와 데이터 제외 |
+
+기본 빌드는 시작 씬에서 열립니다. 세 씬은 하나의 참가자 세션과 전송 대기열을 공유합니다. 재실행 시 저장 상태에 따라 진행 씬이나 후기 씬으로 이동합니다. 원본 `Assets/Scenes/BossFight.unity`는 Unity Editor에서 일반 전투용으로 열 수 있습니다. 게임 진행 씬은 원본의 전투 코드와 에셋을 사용하며 1페이즈 9개 공격과 별도 낙석, 2페이즈 5개 공격을 총 15개 ID로 추적합니다.
 
 안내 및 동의 → 연령대·게임 빈도 선택 및 서버 배정 → 도전·재도전 → 승리 또는 자발적 종료 → 최종 설문(건너뛰기 가능) → 사후 안내 순서입니다. 실제 목표 횟수와 그룹은 플레이 화면에서 숨깁니다. 전투 중 오른쪽 아래의 **참여 종료**로 설문을 열 수 있습니다. 사후 안내에는 참가자 UUID, 문의처, 제외 요청 버튼이 있습니다.
 
@@ -12,7 +20,7 @@ Unity 6000.6.3f1, URP 17.6, Cinemachine 6.6, Input System 1.20, uGUI 2.6을 사�
 
 ## Unity Inspector 설정
 
-1. Project 창에서 `Assets/Settings/BossStudySettings.asset`을 선택합니다. 이 에셋은 `BossStudy` 씬의 **보스전 → Boss Arena → 연구 설정**에 연결되어 있습니다. `Enabled For Research`가 켜진 상태에서 `BossStudy`를 열고 Play를 누르면 연구 안내가 표시됩니다.
+1. Project 창에서 `Assets/Settings/BossStudySettings.asset`을 선택합니다. 이 에셋은 세 씬의 **Study Scene → Study Scene Entry → 연구 설정**에 연결되어 있습니다. `BossStudyStart`를 열고 Play를 누르면 연구 안내가 표시됩니다.
 2. **Protocol**에 승인된 동의 안내, 보관 기간, 담당자 연락처, 사후 안내, 설문 문항을 입력합니다. 보관 기간과 연락처가 비어 있으면 참여 버튼을 표시하지 않습니다. 저장된 동의는 자동으로 새 문구로 교체하지 않습니다.
 3. **Api Url**을 설정합니다. Editor와 Development Build의 로컬 테스트는 기본값 `http://127.0.0.1:8000`을 사용합니다. 참가자 배포 빌드에는 HTTPS API 주소를 입력합니다. Player Settings의 HTTP 설정은 **Development Only**이며, 연구 클라이언트는 개발 환경에서도 루프백 주소의 평문 HTTP만 허용합니다. [Unity PlayerSettings HTTP 설정](https://docs.unity3d.com/6000.0/Documentation/ScriptReference/PlayerSettings-insecureHttpOption.html)
 4. **Minimum Level**, **Maximum Level**, **Initial Level**, **Maximum Step**으로 난이도를 조정합니다. **Boss Health**, **Default Pattern**, **Pattern Overrides**의 X는 낮은 난이도 값, Y는 높은 난이도 값입니다. **Pattern Id**에는 `StudyRecords.cs`의 식별자(예: `fist_sweep`)를 입력합니다. 공격 간격은 배수이므로 높은 난이도를 더 촘촘하게 하려면 Y를 작게 설정합니다.
@@ -20,7 +28,7 @@ Unity 6000.6.3f1, URP 17.6, Cinemachine 6.6, Input System 1.20, uGUI 2.6을 사�
 
 기존 플레이어 이동·회피·공격과 보스 페이즈 전환을 재사용합니다. 연구 모드에서는 Enter 자동 재시작과 Editor 무적·페이즈 건너뛰기 메뉴를 비활성화합니다. 한 참가자 흐름은 하나의 로컬 파일에 대응합니다. 신규 참가자가 같은 PC를 쓸 때는 다른 프로필을 사용하고, 테스트 파일은 미전송 기록이 없음을 확인한 테스트 환경에서만 정리합니다.
 
-참가자용 빌드를 만들 때는 **File → Build Profiles**에서 연구용 프로필을 따로 만들고 **Override Global Scene List**를 켭니다. 해당 프로필의 Scene List에는 `Assets/Scenes/BossStudy.unity`만 넣습니다. 기본 씬 목록은 일반 보스전을 빌드할 때 사용합니다.
+참가자용 빌드에는 기본 Scene List를 사용합니다. 빌드 프로필이 자체 씬 목록을 사용한다면 `BossStudyStart`, `BossStudyGame`, `BossStudyReview`를 이 순서대로 등록합니다.
 
 ## DDA 계산
 
@@ -72,9 +80,9 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 
 ## 검증 방법과 결과
 
-- 씬 분리 후 Play Mode에서 `BossFight`는 연구 세션과 연구 화면 없이 실행됐고, `BossStudy`에서는 연구 세션과 동의 화면이 생성됐습니다.
+- 세 씬을 연결한 뒤 Unity Editor 컴파일과 실제 로컬 FastAPI를 사용한 Play Mode 테스트를 통과했습니다. 동의·등록 후 게임 진행 씬으로 이동했고, 클리어 후 후기 씬에서 같은 참가자 세션으로 설문과 데이터 제외를 완료했습니다.
 - 서버 테스트는 `ResearchServer`에서 `python -m unittest -v`를 실행합니다. FastAPI 통합 테스트 5개가 통과했습니다. 동의·토큰·가중 배정·재시작 시 동일 배정, 중복 제출, 조기 클리어 저장, 설문과 생략, 제외, 모의 Sheets 오류 및 재동기화를 검증했습니다.
-- Unity의 **Tools → Boss Arena → Research → Run Study Smoke Test**는 별도 저장 폴더에 테스트 참가자를 생성합니다. 실제 참가 기록이 없는 Editor에서 `BossStudy`를 열고, 별도 SQLite DB의 서버를 18741 포트로 시작합니다. `RESEARCH_GROUPS`를 `[{"group":"B","target_attempts":7,"weight":1}]`로 설정합니다. 테스트는 동의 전 차단, UUID 재로드, 페이즈 전환과 1회 클리어, 연결 실패 후 재전송, 설문 및 제외를 확인합니다. 결과는 `Temp/BossStudySmoke.txt`에 기록됩니다. 피해 입력은 재현성을 위해 실제 전투 체력 메서드에 테스트가 직접 전달합니다.
+- Unity의 **Tools → Boss Arena → Research → Run Study Smoke Test**는 별도 저장 폴더에 테스트 참가자를 생성합니다. 실제 참가 기록이 없는 Editor에서 `BossStudyStart`를 열고, 별도 SQLite DB의 서버를 18741 포트로 시작합니다. `RESEARCH_GROUPS`를 `[{"group":"B","target_attempts":7,"weight":1}]`로 설정합니다. 테스트는 시작 → 진행 → 후기 씬 전환, 세션 유지, 동의 전 차단, UUID 재로드, 페이즈 전환과 1회 클리어, 연결 실패 후 재전송, 설문 및 제외를 확인합니다. 결과는 `Temp/BossStudySmoke.txt`에 기록됩니다. 피해 입력은 재현성을 위해 실제 전투 체력 메서드에 테스트가 직접 전달합니다.
 - **Tools → Boss Arena → Research → Validate DDA and Simulate**에서 DDA 방향·변화폭 4개 검증이 통과했습니다. 실력 3단계, 목표 3종에 각 300명씩 시드 315로 모의 실험합니다. `Temp/BossStudySimulation.txt`에 기록된 조합별 MAE는 1.35–9.97회, ±1회 달성률은 0–63.4%, 중도 종료 및 24회 미클리어 비율은 0–31.7%였습니다. 게임 실측 대신 난이도·실력·학습·확률로 결과를 생성하는 모형이며, 참가자 데이터에서의 달성률은 아직 확인하지 않았습니다.
 - 실측 집계는 `python metrics.py study.sqlite3`으로 출력합니다. MAE와 ±1회 달성률 분모는 클리어 참가자, 중도 포기율 분모는 종료가 관측된 참가자(클리어 또는 자발적 종료)입니다. 활동이 재개되지 않은 열린 참가자는 따로 표시합니다.
 - 실제 Google 서비스 계정과 스프레드시트가 제공되면 운영 배포 전에 테스트 참가자 하나를 등록하고, Sheets에 반영된 뒤 제외 요청이 네 탭에서 사라지는지 확인합니다. 이번 검증은 모의 Sheets REST 응답을 사용했습니다.

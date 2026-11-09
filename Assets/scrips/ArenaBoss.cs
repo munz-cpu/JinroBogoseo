@@ -148,7 +148,8 @@ namespace BossTemplate
                 Sprite sprite = giantSprite ? giantSprite : appearance.sprite;
                 appearance.sprite = sprite;
                 appearance.flipX = false;
-                appearance.sortingOrder = -1;
+                // Keep the giant behind both layers of planted mines.
+                appearance.sortingOrder = ArenaProjectile.PlantedBodySortingOrder - 1;
                 appearance.color = neutralColor * new Color(.8f, .86f, .94f, 1);
 
                 float scale = 15f / sprite.bounds.size.y;

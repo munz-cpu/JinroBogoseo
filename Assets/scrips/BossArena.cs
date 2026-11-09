@@ -18,7 +18,6 @@ namespace BossTemplate
         public Bounds GroundBounds => ground.Bounds;
         [SerializeField, InspectorName("플레이어")] private SideViewPlayer player;
         [SerializeField, InspectorName("보스")] private ArenaBoss boss;
-        [SerializeField, InspectorName("연구 설정")] private StudySettings studySettings;
         [SerializeField, InspectorName("경기장 카메라")] private Camera arenaCamera;
         [SerializeField, InspectorName("탄환 목록")] private ArenaProjectile[] projectiles;
         [SerializeField, InspectorName("공격 표시 목록")] private ArenaEffect[] effects;
@@ -48,7 +47,6 @@ namespace BossTemplate
         public SideViewPlayer Player => player;
         public ArenaBoss Boss => boss;
         internal StudySession Study { get; private set; }
-        internal StudySettings ResearchSettings => studySettings;
         public bool ResearchActive => Study != null;
         public bool Finished => (Study && !Study.InCombat) || CombatEnded;
         internal bool CombatEnded => Player.Health.Dead || (Boss.Phase == 2 && Boss.Health.Dead);
@@ -132,12 +130,12 @@ namespace BossTemplate
             Player.Health.InitializeAudio(this);
             Boss.Health.InitializeAudio(this);
             ResetFight();
-            if (studySettings && studySettings.enabledForResearch)
-            {
-                EndStudyFight();
-                Study = gameObject.AddComponent<StudySession>();
-                Study.Initialize(this, studySettings);
-            }
+        }
+
+        internal void AttachStudy(StudySession study)
+        {
+            Study = study;
+            EndStudyFight();
         }
 
         private void OnDestroy() => Destroy(rockDustMesh);

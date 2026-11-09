@@ -6,6 +6,7 @@ using System.Reflection;
 using BossTemplate;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 [InitializeOnLoad]
 internal static class BossStudyChecks
@@ -13,7 +14,6 @@ internal static class BossStudyChecks
     private const string SmokeKey = "BossStudyChecks.Run";
     private const string ReportPath = "Temp/BossStudySmoke.txt";
     private const string Endpoint = "http://127.0.0.1:18741";
-    private const string StudyScenePath = "Assets/Scenes/BossStudy.unity";
     private const string SettingsPath = "Assets/Settings/BossStudySettings.asset";
 
     static BossStudyChecks() => EditorApplication.playModeStateChanged += OnPlayModeChanged;
@@ -22,8 +22,8 @@ internal static class BossStudyChecks
     private static void RunSmoke()
     {
         if (EditorApplication.isPlayingOrWillChangePlaymode
-            || UnityEngine.SceneManagement.SceneManager.GetActiveScene().path != StudyScenePath)
-            throw new InvalidOperationException("Open BossStudy in Edit Mode before running the study smoke test.");
+            || SceneManager.GetActiveScene().path != StudySceneEntry.StartPath)
+            throw new InvalidOperationException("Open BossStudyStart in Edit Mode before running the study smoke test.");
         if (File.Exists(Path.Combine(Application.persistentDataPath, "boss-study-v1.json")))
             throw new InvalidOperationException("Use a test editor profile without existing study data.");
         File.WriteAllText(ReportPath, "RUNNING");
@@ -35,9 +35,16 @@ internal static class BossStudyChecks
     {
         if (change != PlayModeStateChange.EnteredPlayMode || !SessionState.GetBool(SmokeKey, false)) return;
         SessionState.EraseBool(SmokeKey);
-        var arena = UnityEngine.Object.FindAnyObjectByType<BossArena>();
-        if (!arena) { Report("FAIL: BossArena missing"); return; }
-        arena.StartCoroutine(Guard(Smoke(arena)));
+        double deadline = EditorApplication.timeSinceStartup + 5;
+        void StartWhenReady()
+        {
+            var study = UnityEngine.Object.FindAnyObjectByType<StudySession>();
+            if (!study && EditorApplication.isPlaying && EditorApplication.timeSinceStartup < deadline) return;
+            EditorApplication.update -= StartWhenReady;
+            if (!study) { Report("FAIL: StudySession missing"); return; }
+            study.StartCoroutine(Guard(Smoke(study)));
+        }
+        EditorApplication.update += StartWhenReady;
     }
 
     private static IEnumerator Guard(IEnumerator test)
@@ -60,7 +67,7 @@ internal static class BossStudyChecks
             if (current is IEnumerator nested) stack.Push(nested);
             else yield return current;
         }
-        Report("PASS: consent gate, assignment, UUID reload, real damage, early victory, offline retry, survey, withdrawal");
+        Report("PASS: start → game → review, one session, consent gate, assignment, UUID reload, early victory, offline retry, survey, withdrawal");
     }
 
     private static void Report(string result)
@@ -69,21 +76,26 @@ internal static class BossStudyChecks
         EditorApplication.ExitPlaymode();
     }
 
-    private static IEnumerator Smoke(BossArena arena)
+    private static IEnumerator Smoke(StudySession study)
     {
-        var study = arena.Study;
-        Check(study && arena.Finished && study.Screen == StudyScreen.Consent, "Consent must gate combat");
+        Check(SceneManager.GetActiveScene().path == StudySceneEntry.StartPath && study.Screen == StudyScreen.Consent,
+            "Consent must begin in the start scene");
+        Check(!UnityEngine.Object.FindAnyObjectByType<BossArena>(), "Start scene should have no arena");
         Check(UnityEngine.EventSystems.EventSystem.current, "Study UI input module missing");
-        var settings = UnityEngine.Object.Instantiate(arena.ResearchSettings);
+        var settings = UnityEngine.Object.Instantiate(AssetDatabase.LoadAssetAtPath<StudySettings>(SettingsPath));
         settings.protocol.apiUrl = Endpoint;
         settings.protocol.contact = "Smoke test only";
         settings.protocol.retention = "Smoke test only";
-        var storage = new StudyStorage(Path.GetFullPath("Temp/BossStudySmoke-" + Guid.NewGuid().ToString("N")));
+        var storage = new StudyStorage(Path.Combine(Application.temporaryCachePath, "BossStudySmoke-" + Guid.NewGuid().ToString("N")));
         ReplacePrivate(study, "storage", storage);
         ReplacePrivate(study, "asset", settings);
 
         study.Enroll("undisclosed", "undisclosed");
-        yield return Until(() => study.Screen == StudyScreen.Ready, "Server assignment");
+        yield return Until(() => study.Screen == StudyScreen.Ready && SceneManager.GetActiveScene().path == StudySceneEntry.GamePath
+            && UnityEngine.Object.FindAnyObjectByType<BossArena>()?.Study == study, "Server assignment and game scene");
+        var arena = UnityEngine.Object.FindAnyObjectByType<BossArena>();
+        Check(arena.Finished && UnityEngine.Object.FindObjectsByType<StudySession>(FindObjectsSortMode.None).Length == 1,
+            "The existing session must own the game scene");
         var saved = storage.Load();
         string participant = saved.participant.participant_id;
         Check(Guid.TryParse(participant, out _) && saved.assignment.target_attempts == 7, "UUID and fixed test assignment");
@@ -97,7 +109,9 @@ internal static class BossStudyChecks
         arena.Boss.Health.Hit(arena.Boss.Health.Current);
         yield return Until(() => arena.Boss.Phase == 2 && !arena.Boss.Transitioning, "Natural phase transition");
         arena.Boss.HitFist(0, arena.Boss.Health.Current);
-        yield return Until(() => study.Screen == StudyScreen.Survey, "Clear at attempt 1 despite target 7");
+        yield return Until(() => study.Screen == StudyScreen.Survey && SceneManager.GetActiveScene().path == StudySceneEntry.ReviewPath,
+            "Clear at attempt 1 despite target 7 and open the review scene");
+        Check(!UnityEngine.Object.FindAnyObjectByType<BossArena>(), "Review scene should have no arena");
         saved = storage.Load();
         Check(saved.pending.Count == 1 && saved.recent[0].cleared && saved.recent[0].attempt_number == 1, "Durable attempt record");
         Check(saved.recent[0].pattern_stats[(int)BossPattern.dash].average_damage == 6, "Measured pattern damage");

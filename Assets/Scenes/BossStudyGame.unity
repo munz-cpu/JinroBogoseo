@@ -10824,7 +10824,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f8b2b459f56cc9b4088371400d0b8ec1, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BossTemplate.BossArena
-  studySettings: {fileID: 11400000, guid: 2a4b08d39b2155e40b5b3068ffba867c, type: 2}
   ground: {fileID: 1703867773}
   platforms:
   - {fileID: 1703867773}
@@ -13764,6 +13763,53 @@ SpriteRenderer:
   m_WasSpriteAssigned: 1
   m_SpriteSortPoint: 0
   m_BlendShapeWeights: []
+--- !u!1 &905000001
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 905000002}
+  - component: {fileID: 905000003}
+  m_Layer: 0
+  m_Name: Study Scene
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &905000002
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 905000001}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &905000003
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 905000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 835e4ca241544cc89129dd9833343686, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BossTemplate.StudySceneEntry
+  stage: 1
+  settings: {fileID: 11400000, guid: 2a4b08d39b2155e40b5b3068ffba867c, type: 2}
+  arena: {fileID: 1728527093}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -13781,3 +13827,4 @@ SceneRoots:
   - {fileID: 758210313}
   - {fileID: 764826421}
   - {fileID: 700000000000000011}
+  - {fileID: 905000002}

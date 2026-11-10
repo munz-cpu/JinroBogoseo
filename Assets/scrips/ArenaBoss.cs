@@ -91,7 +91,11 @@ namespace BossTemplate
             fistWindupUntil[0] = fistWindupUntil[1] = 0;
             hockeyHitstopUntil = 0;
             holdBothFists = false;
-            foreach (var fist in fists) fist.enabled = false;
+            foreach (var fist in fists)
+            {
+                fist.enabled = false;
+                fist.transform.rotation = Quaternion.identity;
+            }
             if (appearance)
             {
                 appearance.transform.SetLocalPositionAndRotation(neutralPosition, neutralRotation);
@@ -202,7 +206,7 @@ namespace BossTemplate
             const float verticalRadius = 1.2f;
             const float orbitPeriod = 5f;
             Bounds bounds = arena.GroundBounds;
-            float clearance = sideOffset + horizontalRadius + fists[index].bounds.extents.x;
+            float clearance = sideOffset + horizontalRadius + FistHitBounds(fists[index]).extents.x;
             float centerX = Mathf.Clamp(transform.position.x, bounds.min.x + clearance, bounds.max.x - clearance);
             centerX += index == 0 ? -sideOffset : sideOffset;
             float centerY = arena.GroundY + FistHeight * .5f + .35f + verticalRadius;
@@ -217,12 +221,21 @@ namespace BossTemplate
             for (int i = 0; i < fists.Length; i++)
             {
                 if (!fists[i].enabled) continue;
-                float time = ArenaProjectile.BoundsContactTime(fists[i].bounds, from, to);
+                float time = ArenaProjectile.BoundsContactTime(FistHitBounds(fists[i]), from, to);
                 if (time >= first) continue;
                 first = time;
                 hitIndex = i;
             }
             return first;
+        }
+
+        private static Bounds FistHitBounds(SpriteRenderer fist)
+        {
+            // Keep the same combat footprint while the sprite tilts along a diagonal.
+            Bounds local = fist.localBounds;
+            Vector3 scale = fist.transform.lossyScale;
+            return new Bounds(fist.transform.position + Vector3.Scale(local.center, scale),
+                Vector3.Scale(local.size, scale));
         }
 
         internal void HitFist(int index, float damage)
@@ -540,9 +553,12 @@ namespace BossTemplate
                 yield return RockRain();
                 if (arena.Finished) yield break;
                 var rain = arena.Parameters(BossPattern.rock_rain);
-                yield return new WaitForSeconds(2.2f * rain.interval / rain.selection_weight);
+                yield return new WaitForSeconds(RockRainRepeatDelay(rain));
             }
         }
+
+        internal static float RockRainRepeatDelay(PatternParameters rain) =>
+            2.2f * rain.interval / rain.selection_weight;
 
         private IEnumerator RockRain()
         {

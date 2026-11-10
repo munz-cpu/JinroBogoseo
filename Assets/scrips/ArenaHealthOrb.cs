@@ -26,6 +26,7 @@ namespace BossTemplate
 
         private void Update()
         {
+            if (arena.Boss.Transitioning) expires += Time.deltaTime;
             if (arena.Finished || Time.time >= expires)
             {
                 gameObject.SetActive(false);

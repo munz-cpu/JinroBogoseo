@@ -131,9 +131,9 @@ internal static class BossStudyChecks
         arena.Player.Health.Hit(6, 0, true, BossPattern.dash);
         arena.Boss.Health.Hit(arena.Boss.Health.Current);
         yield return Until(() => arena.Boss.Phase == 2 && !arena.Boss.Transitioning, "Natural phase transition");
-        arena.Boss.HitFist(0, arena.Boss.Health.Current);
+        arena.SkipCurrentPhase();
         yield return Until(() => study.Screen == StudyScreen.Survey && SceneManager.GetActiveScene().path == StudySceneEntry.ReviewPath,
-            "Clear at attempt 1 despite target 7 and open the review scene");
+            "Skipping phase two in study mode clears attempt 1 despite target 7 and opens the review scene");
         Check(!UnityEngine.Object.FindAnyObjectByType<BossArena>(), "Review scene should have no arena");
         saved = storage.Load();
         Check(saved.pending.Count == 1 && saved.recent[0].cleared && saved.recent[0].attempt_number == 1, "Durable attempt record");

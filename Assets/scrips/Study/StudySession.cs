@@ -50,12 +50,11 @@ namespace BossTemplate
         internal static string Now() => DateTime.UtcNow.ToString("O");
 
 #if UNITY_EDITOR
-        internal StudyAssignment InspectorAssignment => state?.assignment;
-        internal int InspectorAttemptCount => state?.attempts ?? 0;
-        internal AttemptRecord InspectorActiveAttempt => state?.active;
-        internal AttemptRecord InspectorLastAttempt => state?.recent.Count > 0 ? state.recent[state.recent.Count - 1] : null;
+        internal StudySave InspectorState => state;
         internal float InspectorElapsedSeconds => Time.realtimeSinceStartup - startTime;
         internal float InspectorBossHealthRemaining => arena ? arena.StudyBossHealthRemaining : 1;
+        internal int InspectorBossPhase => arena && !arena.Boss.Transitioning ? arena.Boss.Phase : 0;
+        internal BossPattern? InspectorPreviousPattern { get; private set; }
 #endif
 
         internal void Activate()
@@ -160,6 +159,9 @@ namespace BossTemplate
             };
             state.attempts = number;
             if (!Persist()) return;
+#if UNITY_EDITOR
+            InspectorPreviousPattern = null;
+#endif
             startTime = Time.realtimeSinceStartup;
             checkpointAt = startTime + 5;
             Show(StudyScreen.Combat);
@@ -167,22 +169,26 @@ namespace BossTemplate
         }
 
         internal PatternParameters Parameters(BossPattern pattern) =>
-            state?.active?.difficulty.patterns[(int)pattern] ?? AdaptiveDifficulty.Neutral;
+            state?.active?.difficulty.ParametersFor(pattern) ?? AdaptiveDifficulty.Neutral;
 
         internal BossPattern Pick(BossPattern[] patterns, BossPattern? previous)
         {
-            float total = 0;
-            foreach (var pattern in patterns)
-                if (pattern != previous) total += Parameters(pattern).selection_weight;
+            var difficulty = state?.active?.difficulty;
+            float total = DifficultySnapshot.SelectionWeightTotal(difficulty, patterns, previous);
             float remaining = UnityEngine.Random.value * total;
             BossPattern selected = patterns[0];
             foreach (var pattern in patterns)
             {
                 if (pattern == previous) continue;
+                float weight = DifficultySnapshot.SelectionWeightFor(difficulty, pattern);
+                if (weight <= 0) continue;
                 selected = pattern;
-                remaining -= Parameters(pattern).selection_weight;
+                remaining -= weight;
                 if (remaining <= 0) break;
             }
+#if UNITY_EDITOR
+            InspectorPreviousPattern = selected;
+#endif
             return selected;
         }
 
@@ -236,6 +242,7 @@ namespace BossTemplate
             attempt.cleared = result == "cleared";
             if (attempt.cleared) attempt.boss_hp_remaining = 0;
             state.active = null;
+            state.lastAttempt = attempt;
             state.cleared = attempt.cleared;
             state.surveyDue = attempt.cleared || result == "stopped";
             if (result is "defeat" or "cleared")
@@ -274,11 +281,18 @@ namespace BossTemplate
             state.withdrawalPending = true;
             state.pending.Clear();
             state.recent.Clear();
+            state.lastAttempt = null;
             // An unacknowledged registration must be replayed with the same token before it can be withdrawn.
             if (state.assignment != null) ClearRegistration();
             if (!Persist()) return;
             Retry();
             Show(StudyScreen.Withdrawal);
+        }
+
+        internal void ReplayBossFight()
+        {
+            if (Screen != StudyScreen.Debrief || changingScene) return;
+            LoadScene(StudySceneEntry.ReplayPath);
         }
 
         private void ClearRegistration()
@@ -438,7 +452,11 @@ namespace BossTemplate
                 return;
             }
 
-            string path = StudySceneEntry.ScenePath(destination);
+            LoadScene(StudySceneEntry.ScenePath(destination));
+        }
+
+        private void LoadScene(string path)
+        {
             string sceneName = Path.GetFileNameWithoutExtension(path);
             if (!Application.CanStreamedLevelBeLoaded(sceneName))
             {

@@ -153,7 +153,9 @@ namespace BossTemplate
                 {
                     float elapsed = fuse - (expires - Time.time);
                     float progress = elapsed / fuse;
-                    float phase = Mathf.Repeat(elapsed * (.55f + .55f * progress), 1);
+                    // Accumulated cycles make the red warning accelerate from 2 to 4 flashes per second.
+                    float cycles = healingMine ? elapsed * (.55f + .55f * progress) : elapsed * (2f + progress);
+                    float phase = Mathf.Repeat(cycles, 1);
                     float rise = Mathf.SmoothStep(0, 1, phase / .10f);
                     float fade = 1 - Mathf.SmoothStep(0, 1, (phase - .65f) / .12f);
                     Color crackColor = healingMine ? new Color(.2f, 1, .3f) : Color.red;

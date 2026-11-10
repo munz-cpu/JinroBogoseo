@@ -19,6 +19,7 @@ namespace BossTemplate
                 throw new InvalidDataException("Unrecognized study save");
             if (string.IsNullOrEmpty(state.participant?.participant_id)) state.participant = null;
             if (string.IsNullOrEmpty(state.active?.attempt_id)) state.active = null;
+            if (string.IsNullOrEmpty(state.lastAttempt?.attempt_id)) state.lastAttempt = null;
             if (state.assignment?.target_attempts is null or <= 0) state.assignment = null;
             return state;
         }

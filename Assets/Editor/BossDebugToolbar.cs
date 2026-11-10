@@ -23,11 +23,11 @@ internal static class BossDebugToolbar
     [MainToolbarElement(InvinciblePath, defaultDockPosition = MainToolbarDockPosition.Left, defaultDockIndex = 14)]
     private static MainToolbarElement InvincibleButton()
     {
-        var arena = ActiveArena();
+        var arena = InvincibilityArena();
         string label = arena && arena.Player.Health.DebugInvincible ? "무적 ON" : "무적 OFF";
         return new MainToolbarButton(new MainToolbarContent(label, "플레이어 무적 전환"), ToggleInvincibility)
         {
-            enabled = ActiveArena() != null
+            enabled = arena != null
         };
     }
 
@@ -40,16 +40,19 @@ internal static class BossDebugToolbar
         };
     }
 
-    private static BossArena ActiveArena()
+    private static BossArena ActiveArena() =>
+        EditorApplication.isPlaying ? Object.FindAnyObjectByType<BossArena>() : null;
+
+    private static BossArena InvincibilityArena()
     {
-        var arena = EditorApplication.isPlaying ? Object.FindAnyObjectByType<BossArena>() : null;
+        var arena = ActiveArena();
         return arena && !arena.ResearchActive ? arena : null;
     }
 
     [MenuItem(InvincibleMenu, false, 10)]
     private static void ToggleInvincibility()
     {
-        var arena = ActiveArena();
+        var arena = InvincibilityArena();
         if (!arena) return;
 
         FighterHealth health = arena.Player.Health;
@@ -65,6 +68,8 @@ internal static class BossDebugToolbar
     }
 
     [MenuItem(InvincibleMenu, true)]
+    private static bool CanToggleInvincibility() => InvincibilityArena() != null;
+
     [MenuItem(SkipMenu, true)]
-    private static bool CanUseDebugMenu() => ActiveArena() != null;
+    private static bool CanSkipPhase() => ActiveArena() != null;
 }

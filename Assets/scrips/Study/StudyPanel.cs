@@ -13,7 +13,7 @@ namespace BossTemplate
         [SerializeField] private Button attempt, stopFromReady, stopFromCombat;
         [SerializeField] private Text ratingTitle, debrief, participant, contact, withdrawalMessage;
         [SerializeField] private Button[] ratings;
-        [SerializeField] private Button skipRating, withdraw, retry;
+        [SerializeField] private Button skipRating, withdraw, retry, replay;
         [SerializeField] private Text status;
         [SerializeField] private bool useSceneFonts;
 
@@ -39,6 +39,7 @@ namespace BossTemplate
             Listen(skipRating, () => session.SubmitRating(null));
             Listen(withdraw, session.Withdraw);
             Listen(retry, session.Retry);
+            Listen(replay, session.ReplayBossFight);
 
             for (int i = 0; i < ratings.Length; i++)
             {

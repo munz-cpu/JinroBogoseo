@@ -29,7 +29,7 @@ Unity 6000.6.3f1, URP 17.6, Cinemachine 6.6, Input System 1.20, uGUI 2.6을 사�
 4. **Minimum Level**, **Maximum Level**, **Initial Level**, **Maximum Step**으로 난이도를 조정합니다. **Boss Health**, **Default Pattern**, **Pattern Overrides**의 X는 낮은 난이도 값, Y는 높은 난이도 값입니다. **Pattern Id**에는 `StudyRecords.cs`의 식별자(예: `fist_sweep`)를 입력합니다. 공격 간격은 배수이므로 높은 난이도를 더 촘촘하게 하려면 Y를 작게 설정합니다.
 5. 동의 문구나 보관 조건 변경 시 **Consent Version**, 전투 설정·설문 변경 시 **Settings Version**, 서버 그룹·비율 변경 시 **RESEARCH_ASSIGNMENT_VERSION**을 갱신합니다. 참가자 등록 시 클라이언트 설정 사본을 로컬에 저장하므로 활성 연구 중 기존 참가자의 API 주소와 실험 조건은 해당 사본을 따릅니다. 버전별로 승인된 문구, Inspector 설정과 서버 그룹 설정을 보관합니다.
 
-기존 플레이어 이동·회피·공격과 보스 페이즈 전환을 재사용합니다. 연구 모드에서는 Enter 자동 재시작과 Editor 무적·페이즈 건너뛰기 메뉴를 비활성화합니다. 한 참가자 흐름은 하나의 로컬 파일에 대응합니다. 신규 참가자가 같은 PC를 쓸 때는 다른 프로필을 사용하고, 테스트 파일은 미전송 기록이 없음을 확인한 테스트 환경에서만 정리합니다.
+기존 플레이어 이동·회피·공격과 보스 페이즈 전환을 재사용합니다. 연구 모드에서는 Enter 자동 재시작과 Editor 무적 메뉴를 비활성화합니다. Unity Editor에서 연구 전투 중 페이즈 건너뛰기를 사용할 수 있으며, 2페이즈를 건너뛴 도전도 클리어로 기록·전송합니다. 한 참가자 흐름은 하나의 로컬 파일에 대응합니다. 신규 참가자가 같은 PC를 쓸 때는 다른 프로필을 사용하고, 테스트 파일은 미전송 기록이 없음을 확인한 테스트 환경에서만 정리합니다.
 
 참가자용 빌드에는 기본 Scene List를 사용합니다. 빌드 프로필이 자체 씬 목록을 사용한다면 `BossStudyStart`, `BossStudyIntro`, `BossStudyGame`, `BossStudyReview`를 이 순서대로 등록합니다.
 

@@ -138,7 +138,7 @@ namespace BossTemplate
             for (float elapsed = 0; elapsed < setup && !arena.Finished; elapsed += Time.deltaTime)
             {
                 court = AirHockeyCourt;
-                float t = Mathf.SmoothStep(0, 1, elapsed / setup);
+                float t = EaseInOutQuint(elapsed / setup);
                 fists[0].transform.position = Vector2.Lerp(leftStart, HockeyPaddlePosition(0, court, HockeyServeHeight(court)), t);
                 fists[1].transform.position = Vector2.Lerp(rightStart, HockeyPaddlePosition(1, court, court.center.y), t);
                 yield return null;
@@ -219,7 +219,7 @@ namespace BossTemplate
             if (secondsToHit >= strike)
                 return Mathf.SmoothStep(0, pullback, (HockeyWindupDuration - secondsToHit) / (HockeyWindupDuration - strike));
             float t = Mathf.Clamp01(1 - secondsToHit / strike);
-            return Mathf.Lerp(pullback, HockeyStrikeReach, t * t);
+            return Mathf.Lerp(pullback, HockeyStrikeReach, t * t * t);
         }
 
         private IEnumerator FistSweep()
@@ -239,10 +239,11 @@ namespace BossTemplate
             var laneSize = new Vector2(ground.size.x, fist.bounds.size.y * arena.Parameters(BossPattern.fist_sweep).hitbox);
             GameObject lane = arena.Flash(laneCenter, laneSize, FistLaneColor, tracking + warning);
             fistWindupUntil[index] = Time.time + tracking;
+            Vector2 followVelocity = Vector2.zero;
             for (float elapsed = 0; elapsed < tracking && !arena.Finished; elapsed += Time.deltaTime)
             {
                 Vector2 follow = new Vector2(startX, Mathf.Max(PlayerPosition.y, bottom));
-                fist.transform.position = Vector2.MoveTowards(fist.transform.position, follow, Time.deltaTime * 27);
+                fist.transform.position = Vector2.SmoothDamp(fist.transform.position, follow, ref followVelocity, .18f, 27);
                 laneCenter.y = fist.transform.position.y;
                 if (lane) lane.transform.position = laneCenter;
                 yield return null;
@@ -304,12 +305,21 @@ namespace BossTemplate
             Intent = "돌 지뢰 투척";
             for (int i = 0; i < mineCount && !arena.Finished; i++)
             {
-                Vector2 origin = fists[i % fists.Length].transform.position;
+                SpriteRenderer fist = fists[i % fists.Length];
+                Vector2 origin = fist.transform.position;
                 Vector2 destination = new Vector2(center - halfWidth + i * spacing, arena.GroundY + ArenaProjectile.MineLandingOffset);
                 Vector2 velocity = (destination - origin) / flightTime;
                 velocity.y += ArenaProjectile.MineGravity * flightTime * .5f;
                 arena.SpawnRock(BossPattern.throw_mines, origin, velocity, 15, RockFlight.Mine, healingMine: i == healingMine);
-                yield return new WaitForSeconds(throwInterval);
+                Vector2 recoil = -velocity.normalized * .65f;
+                for (float elapsed = 0; elapsed < throwInterval && !arena.Finished; elapsed += Time.deltaTime)
+                {
+                    float t = elapsed / throwInterval;
+                    float amount = Mathf.SmoothStep(0, 1, t / .25f) * (1 - Mathf.SmoothStep(0, 1, (t - .25f) / .75f));
+                    fist.transform.position = origin + recoil * amount;
+                    yield return null;
+                }
+                fist.transform.position = origin;
             }
             StartCoroutine(ReturnFist(1));
             yield return ReturnFist(0);
@@ -439,7 +449,11 @@ namespace BossTemplate
                 pose = start + new Vector2(index == 0 ? -1.25f : 1.25f, .85f);
             pose.x = ClampFistX(pose.x, fist);
             if (direction.y < 0) pose.y = Mathf.Min(pose.y, PlayerPosition.y + 3.4f);
-            yield return WindUpFist(index, pose, start, lead);
+            // A flipped sprite already faces left. Measure the remaining tilt from that direction.
+            float tilt = path.x != 0 && path.y != 0
+                ? Mathf.Atan2(path.y * Mathf.Sign(path.x), Mathf.Abs(path.x)) * Mathf.Rad2Deg
+                : 0;
+            yield return WindUpFist(index, pose, start, lead, tilt);
             if (arena.Finished) yield break;
 
             Intent = attack;
@@ -458,21 +472,47 @@ namespace BossTemplate
             yield return ReturnFist(index);
         }
 
-        private IEnumerator WindUpFist(int index, Vector2 pose, Vector2 ready, float duration)
+        private IEnumerator WindUpFist(int index, Vector2 pose, Vector2 ready, float duration, float tilt = 0)
         {
             SpriteRenderer fist = fists[index];
             Vector2 origin = fist.transform.position;
+            Quaternion initialRotation = fist.transform.rotation;
+            Quaternion readyRotation = Quaternion.Euler(0, 0, tilt);
+            const float gatherEnd = .58f;
+            const float releaseStart = .74f;
             fistWindupUntil[index] = Time.time + duration;
             for (float elapsed = 0; elapsed < duration && !arena.Finished; elapsed += Time.deltaTime)
             {
                 float t = elapsed / duration;
-                fist.transform.position = t < .55f
-                    ? Vector2.Lerp(origin, pose, Mathf.SmoothStep(0, 1, t / .55f))
-                    : Vector2.Lerp(pose, ready, Mathf.SmoothStep(0, 1, (t - .76f) / .24f));
+                float gather = Mathf.SmoothStep(0, 1, t / gatherEnd);
+                float release = Mathf.InverseLerp(releaseStart, 1, t);
+                fist.transform.position = t < gatherEnd
+                    ? Vector2.Lerp(origin, pose, gather)
+                    : Vector2.Lerp(pose, ready, release * release);
+                fist.transform.rotation = Quaternion.Slerp(initialRotation, readyRotation, gather);
                 yield return null;
             }
-            if (!arena.Finished) fist.transform.position = ready;
+            if (!arena.Finished) fist.transform.SetPositionAndRotation(ready, readyRotation);
             fistWindupUntil[index] = 0;
+        }
+
+        private static float EaseInOutQuint(float t)
+        {
+            float edge = t < .5f ? 2 * t : 2 * (1 - t);
+            float eased = .5f * edge * edge * edge * edge * edge;
+            return t < .5f ? eased : 1 - eased;
+        }
+
+        private static float FistStrikeProgress(float t, BossPattern pattern)
+        {
+            float remaining = 1 - t;
+            float eased = pattern switch
+            {
+                BossPattern.fist_slams or BossPattern.fist_double_slam => t * t * t,
+                BossPattern.fist_jab or BossPattern.fist_uppercut => 1 - remaining * remaining * remaining,
+                _ => Mathf.SmoothStep(0, 1, t)
+            };
+            return Mathf.Lerp(t, eased, .75f);
         }
 
         private float ClampFistX(float x, SpriteRenderer fist)
@@ -482,19 +522,23 @@ namespace BossTemplate
             return Mathf.Clamp(x, bounds.min.x + halfWidth, bounds.max.x - halfWidth);
         }
 
-        private IEnumerator MoveFist(SpriteRenderer fist, Vector2 destination, float speed, float damage = 0, BossPattern? pattern = null)
+        private IEnumerator MoveFist(SpriteRenderer fist, Vector2 destination, float speed, float damage, BossPattern pattern)
         {
-            PatternParameters parameters = pattern.HasValue ? arena.Parameters(pattern.Value) : AdaptiveDifficulty.Neutral;
-            speed *= parameters.speed;
+            PatternParameters parameters = arena.Parameters(pattern);
+            Vector2 origin = fist.transform.position;
+            float duration = Vector2.Distance(origin, destination) / (speed * parameters.speed);
             damage *= parameters.damage;
             bool madeContact = false;
+            float elapsed = 0;
             while (!arena.Finished)
             {
+                elapsed += Time.deltaTime;
+                float t = duration > 0 ? Mathf.Clamp01(elapsed / duration) : 1;
                 Vector2 previous = fist.transform.position;
-                Vector2 next = Vector2.MoveTowards(previous, destination, speed * Time.deltaTime);
+                Vector2 next = Vector2.Lerp(origin, destination, FistStrikeProgress(t, pattern));
                 if (damage > 0 && !madeContact)
                 {
-                    Bounds contact = fist.bounds;
+                    Bounds contact = FistHitBounds(fist);
                     contact.size *= parameters.hitbox;
                     contact.Expand((Vector3)(arena.Player.HurtboxHalfSize * 2));
                     Vector2 player = PlayerPosition;
@@ -506,7 +550,7 @@ namespace BossTemplate
                     }
                 }
                 fist.transform.position = next;
-                if (next == destination) yield break;
+                if (t >= 1) yield break;
                 yield return null;
             }
         }
@@ -515,12 +559,18 @@ namespace BossTemplate
         {
             SpriteRenderer fist = fists[index];
             Vector2 start = fist.transform.position;
+            Quaternion initialRotation = fist.transform.rotation;
             const float recovery = .55f;
             for (float elapsed = 0; elapsed < recovery && !arena.Finished; elapsed += Time.deltaTime)
             {
-                fist.transform.position = Vector2.Lerp(start, FistOrbitPosition(index), Mathf.SmoothStep(0, 1, elapsed / recovery));
+                float t = elapsed / recovery;
+                float blend = Mathf.SmoothStep(0, 1, t);
+                float arc = 4 * t * (1 - t);
+                Vector2 position = Vector2.Lerp(start, FistOrbitPosition(index), blend) + Vector2.up * (.8f * arc * arc);
+                fist.transform.SetPositionAndRotation(position, Quaternion.Slerp(initialRotation, Quaternion.identity, blend));
                 yield return null;
             }
+            if (!arena.Finished) fist.transform.SetPositionAndRotation(FistOrbitPosition(index), Quaternion.identity);
             fistBusy[index] = false;
         }
     }

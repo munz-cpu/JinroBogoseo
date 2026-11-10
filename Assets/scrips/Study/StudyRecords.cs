@@ -32,6 +32,22 @@ namespace BossTemplate
     {
         public float level, boss_health;
         public PatternParameters[] patterns;
+
+        internal PatternParameters ParametersFor(BossPattern pattern) =>
+            patterns != null && (uint)pattern < (uint)patterns.Length ? patterns[(int)pattern] : null;
+
+        internal static float SelectionWeightFor(DifficultySnapshot difficulty, BossPattern pattern) =>
+            difficulty == null ? AdaptiveDifficulty.Neutral.selection_weight
+                : difficulty.ParametersFor(pattern)?.selection_weight ?? 0;
+
+        internal static float SelectionWeightTotal(DifficultySnapshot difficulty, BossPattern[] candidates, BossPattern? excluded)
+        {
+            float total = 0;
+            foreach (var pattern in candidates)
+                if (pattern != excluded)
+                    total += SelectionWeightFor(difficulty, pattern);
+            return total;
+        }
     }
 
     [Serializable] internal sealed class DifficultyChange
@@ -86,6 +102,7 @@ namespace BossTemplate
         public string token;
         public int attempts;
         public AttemptRecord active;
+        public AttemptRecord lastAttempt;
         public List<AttemptRecord> recent = new List<AttemptRecord>();
         public List<PendingSubmission> pending = new List<PendingSubmission>();
         public bool surveyDue, cleared, debrief, declined, withdrawalPending, withdrawn;

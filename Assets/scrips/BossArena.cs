@@ -157,6 +157,7 @@ namespace BossTemplate
         internal void ResetStudyFight()
         {
             ClearAttacks();
+            if (healthOrb) healthOrb.gameObject.SetActive(false);
             Player.transform.position = playerStart; Boss.transform.position = bossStart;
             Player.Health.ResetHealth(Player.Health.Maximum);
             Boss.Health.ResetHealth(phaseOneHealth * (Study ? Study.BossHealthFactor : 1));
@@ -167,12 +168,12 @@ namespace BossTemplate
         {
             Boss.StopAllCoroutines();
             ClearAttacks();
+            if (healthOrb) healthOrb.gameObject.SetActive(false);
         }
 
         private void ClearAttacks()
         {
             if (effectsAudio) effectsAudio.Stop();
-            if (healthOrb) healthOrb.gameObject.SetActive(false);
             foreach (var item in projectiles) item.gameObject.SetActive(false);
             foreach (var item in effects) item.gameObject.SetActive(false);
         }
@@ -191,7 +192,7 @@ namespace BossTemplate
 #if UNITY_EDITOR
         public void SkipCurrentPhase()
         {
-            if (Study || Finished || Boss.Transitioning) return;
+            if (Finished || Boss.Transitioning) return;
             Boss.Health.InvulnerableUntil = 0;
             Boss.Health.Hit(Boss.Health.Current);
             AdvancePhaseIfDefeated();

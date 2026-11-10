@@ -112,13 +112,13 @@ namespace BossTemplate
             if (Screen == StudyScreen.Title) Show(StudyScreen.Consent);
         }
 
-        internal void Enroll(string age, string frequency)
+        internal void Enroll()
         {
             if (Screen != StudyScreen.Consent || !Protocol.IsConfigured) return;
             state.protocol = JsonUtility.FromJson<StudyProtocol>(JsonUtility.ToJson(asset.protocol));
             state.participant = new ParticipantRecord
             {
-                participant_id = Guid.NewGuid().ToString("D"), age_group = age, gaming_experience = frequency,
+                participant_id = Guid.NewGuid().ToString("D"), age_group = "undisclosed", gaming_experience = "undisclosed",
                 consented = true, consented_at = Now(), consent_version = state.protocol.consentVersion.Trim(),
                 settings_version = state.protocol.settingsVersion.Trim()
             };

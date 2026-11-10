@@ -87,8 +87,8 @@ internal static class BossStudyChecks
         var panel = UnityEngine.Object.FindAnyObjectByType<StudyPanel>();
         var consentButton = Array.Find(panel.GetComponentsInChildren<UnityEngine.UI.Button>(),
             button => button.name == "연구 참여에 동의하고 시작");
-        Check(consentButton && !consentButton.interactable,
-            "Consent button must be visible and disabled before the participant can enroll");
+        Check(consentButton && consentButton.interactable == study.Protocol.IsConfigured,
+            "Consent button must be visible and follow the protocol configuration");
         Check(UnityEngine.EventSystems.EventSystem.current, "Study UI input module missing");
         var settings = UnityEngine.Object.Instantiate(AssetDatabase.LoadAssetAtPath<StudySettings>(SettingsPath));
         settings.protocol.apiUrl = Endpoint;
@@ -110,16 +110,7 @@ internal static class BossStudyChecks
         Check(study.Screen == StudyScreen.Consent && !reopened.declined && reopened.participant == null,
             "Reopening consent must clear the decline without enrolling");
         Check(ReferenceEquals(study.Protocol, settings.protocol), "Before enrollment, use the current Inspector protocol");
-        var panelData = new SerializedObject(panel);
-        foreach (string field in new[] { "ages", "frequencies" })
-        {
-            var choices = panelData.FindProperty(field);
-            var undisclosed = (UnityEngine.UI.Button)choices.GetArrayElementAtIndex(choices.arraySize - 1).objectReferenceValue;
-            Check(undisclosed.gameObject.activeInHierarchy, "The configured protocol must show the enrollment choices");
-            undisclosed.onClick.Invoke();
-        }
-        consentButton = (UnityEngine.UI.Button)panelData.FindProperty("enroll").objectReferenceValue;
-        Check(consentButton.interactable, "Selecting both choices must enable enrollment");
+        Check(consentButton.interactable, "A configured protocol must enable enrollment immediately");
         consentButton.onClick.Invoke();
         yield return Until(() => study.Screen == StudyScreen.Ready && SceneManager.GetActiveScene().path == StudySceneEntry.GamePath
             && UnityEngine.Object.FindAnyObjectByType<BossArena>()?.Study == study, "Server assignment and game scene");
@@ -127,6 +118,8 @@ internal static class BossStudyChecks
         Check(arena.Finished && UnityEngine.Object.FindObjectsByType<StudySession>(FindObjectsSortMode.None).Length == 1,
             "The existing session must own the game scene");
         var saved = storage.Load();
+        Check(saved.participant.age_group == "undisclosed" && saved.participant.gaming_experience == "undisclosed",
+            "New enrollment must not collect age or gaming frequency");
         string participant = saved.participant.participant_id;
         Check(Guid.TryParse(participant, out _) && saved.assignment.target_attempts == 7, "UUID and fixed test assignment");
         Check(study.ParticipantId == participant, "UUID persisted and reloaded");

@@ -52,6 +52,7 @@ namespace BossTemplate
         private readonly float[] fistWindupUntil = new float[2];
         private float fistOrbitStart;
         private static readonly Color FistWarningColor = new Color(1, .52f, .23f);
+        private static readonly Color FistReleaseColor = new Color(1, .86f, .53f);
         internal float PhaseTwoMaximum => phaseTwoHealth * (arena.Study ? arena.Study.BossHealthFactor : 1);
         public FighterHealth Health { get; private set; }
         public int Phase { get; private set; } = 1;
@@ -261,8 +262,13 @@ namespace BossTemplate
                     if (arena.Finished) fists[i].enabled = false;
                     if (!fists[i].enabled) continue;
                     if (!holdBothFists && !fistBusy[i]) fists[i].transform.position = FistOrbitPosition(i);
-                    fists[i].color = Time.time < fistFlashUntil[i] ? ArenaProjectile.HitFlashColor
-                        : fistBusy[i] && Time.time < fistWindupUntil[i] ? FistWarningColor : Color.white;
+                    float windupRemaining = fistWindupUntil[i] - Time.time;
+                    Color color = windupRemaining > 0
+                        ? Color.Lerp(FistReleaseColor, FistWarningColor, windupRemaining / .22f)
+                        : Color.white;
+                    if (Time.time < fistFlashUntil[i])
+                        color = Color.Lerp(color, ArenaProjectile.HitFlashColor, windupRemaining > 0 ? .4f : 1f);
+                    fists[i].color = color;
                 }
                 return;
             }

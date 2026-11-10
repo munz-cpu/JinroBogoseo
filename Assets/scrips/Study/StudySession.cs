@@ -21,7 +21,8 @@ namespace BossTemplate
         };
         internal static readonly BossPattern[] PhaseTwo =
         {
-            BossPattern.fist_slams, BossPattern.air_hockey, BossPattern.fist_sweep, BossPattern.throw_mines, BossPattern.rolling_rocks
+            BossPattern.fist_slams, BossPattern.air_hockey, BossPattern.fist_sweep, BossPattern.throw_mines, BossPattern.rolling_rocks,
+            BossPattern.fist_jab, BossPattern.fist_uppercut, BossPattern.fist_backhand, BossPattern.fist_clap, BossPattern.fist_double_slam
         };
 
         private BossArena arena;
@@ -40,7 +41,8 @@ namespace BossTemplate
         internal bool Cleared => state.cleared;
         internal bool LostLast => state.recent.Count > 0 && state.recent[state.recent.Count - 1].result == "defeat";
         internal bool WithdrawalPending => state.withdrawalPending;
-        internal StudyProtocol Protocol => state?.protocol ?? asset.protocol;
+        // A save written before enrollment can deserialize with an empty protocol object.
+        internal StudyProtocol Protocol => (state?.participant != null ? state.protocol : null) ?? asset.protocol;
         internal bool HasPending => state?.pending.Count > 0;
         internal string SyncStatus => syncStatus;
         internal string ParticipantId => state.participant?.participant_id ?? state.withdrawalParticipantId ?? "";
@@ -117,8 +119,8 @@ namespace BossTemplate
             state.participant = new ParticipantRecord
             {
                 participant_id = Guid.NewGuid().ToString("D"), age_group = age, gaming_experience = frequency,
-                consented = true, consented_at = Now(), consent_version = Protocol.consentVersion.Trim(),
-                settings_version = Protocol.settingsVersion.Trim()
+                consented = true, consented_at = Now(), consent_version = state.protocol.consentVersion.Trim(),
+                settings_version = state.protocol.settingsVersion.Trim()
             };
             var token = new byte[32];
             using (var rng = RandomNumberGenerator.Create()) rng.GetBytes(token);
@@ -408,8 +410,8 @@ namespace BossTemplate
             failures++;
             nextSend = Time.realtimeSinceStartup + Mathf.Min(60, Mathf.Pow(2, Mathf.Min(failures, 6)));
             UpdateStatus(permanent
-                ? $"서버 요청을 완료할 수 없습니다 (코드 {code}). 연구 담당자에게 문의하거나 다시 시도하세요."
-                : "서버에 연결하지 못했습니다. 기록을 저장했으며 자동으로 다시 시도합니다.");
+                ? $"전송에 실패했습니다 ({code}). 다시 시도하거나 담당자에게 문의하세요."
+                : "서버에 연결할 수 없습니다. 저장한 기록은 연결되면 다시 보냅니다.");
         }
 
         private void UpdateStatus(string message)

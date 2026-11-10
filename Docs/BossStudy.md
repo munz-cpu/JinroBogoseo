@@ -11,7 +11,9 @@ Unity 6000.6.3f1, URP 17.6, Cinemachine 6.6, Input System 1.20, uGUI 2.6을 사�
 | `Assets/Scenes/BossStudyGame.unity` | 게임 진행, 보스전과 재도전, 난이도 조절 및 도전 기록 |
 | `Assets/Scenes/BossStudyReview.unity` | 별점, 사후 안내와 데이터 제외 |
 
-기본 빌드는 시작 씬에서 열립니다. 네 씬은 하나의 참가자 세션과 전송 대기열을 공유합니다. 재실행 시 저장 상태에 따라 해당 씬으로 이동합니다. 원본 `Assets/Scenes/BossFight.unity`는 Unity Editor에서 일반 전투용으로 열 수 있습니다. 게임 진행 씬은 원본의 전투 코드와 에셋을 사용하며 1페이즈 9개 공격과 별도 낙석, 2페이즈 5개 공격을 총 15개 ID로 추적합니다.
+기본 빌드는 시작 씬에서 열립니다. 네 씬은 하나의 참가자 세션과 전송 대기열을 공유합니다. 재실행 시 저장 상태에 따라 해당 씬으로 이동합니다. 원본 `Assets/Scenes/BossFight.unity`는 Unity Editor에서 일반 전투용으로 열 수 있습니다. 게임 진행 씬은 원본의 전투 코드와 에셋을 사용하며 1페이즈 9개 공격과 별도 낙석, 2페이즈 10개 공격을 총 20개 ID로 추적합니다.
+
+연구 UI는 각 씬의 **연구 참가 화면** 아래에 배치되어 있습니다. 하위 페이지는 Play Mode에서 현재 단계에 맞춰 켜집니다. 씬의 **연구 세션**은 첫 진입에서만 활성화되고 이후 씬 전환에서도 유지됩니다.
 
 안내 및 동의 → 연령대·게임 빈도 선택 및 서버 배정 → 도전·재도전 → 승리 또는 자발적 종료 → 성취감 별점 1~5점(건너뛰기 가능) → 사후 안내 순서입니다. 실제 목표 횟수와 그룹은 플레이 화면에서 숨깁니다. 전투 중 오른쪽 아래의 **참여 종료**로 별점 화면을 열 수 있습니다. 사후 안내에는 참가자 UUID, 문의처, 제외 요청 버튼이 있습니다.
 
@@ -21,7 +23,7 @@ Unity 6000.6.3f1, URP 17.6, Cinemachine 6.6, Input System 1.20, uGUI 2.6을 사�
 
 ## Unity Inspector 설정
 
-1. Project 창에서 `Assets/Settings/BossStudySettings.asset`을 선택합니다. 이 에셋은 네 씬의 **Study Scene → Study Scene Entry → 연구 설정**에 연결되어 있습니다. `BossStudyStart`를 열고 Play한 뒤 **시작**을 누르면 `BossStudyIntro`에서 연구 안내가 표시됩니다.
+1. Project 창에서 `Assets/Settings/BossStudySettings.asset`을 선택합니다. 이 에셋은 네 씬의 **Study Scene → Study Scene Entry → 연구 설정**에 연결되어 있습니다. `BossStudyStart`를 열고 Play한 뒤 **시작하기**를 누르면 `BossStudyIntro`에서 연구 안내가 표시됩니다.
 2. **Protocol**에 승인된 동의 안내, 보관 기간(**Retention**), 담당자 연락처(**Contact**), 사후 안내를 입력합니다. 설정을 완료하고 참가자가 연령대와 게임 빈도를 선택하면 동의 버튼이 활성화됩니다. 저장된 동의는 자동으로 새 문구로 교체하지 않습니다.
 3. **Api Url**을 설정합니다. Editor와 Development Build의 로컬 테스트는 기본값 `http://127.0.0.1:8000`을 사용합니다. 참가자 배포 빌드에는 HTTPS API 주소를 입력합니다. Player Settings의 HTTP 설정은 **Development Only**이며, 연구 클라이언트는 개발 환경에서도 루프백 주소의 평문 HTTP만 허용합니다. [Unity PlayerSettings HTTP 설정](https://docs.unity3d.com/6000.0/Documentation/ScriptReference/PlayerSettings-insecureHttpOption.html)
 4. **Minimum Level**, **Maximum Level**, **Initial Level**, **Maximum Step**으로 난이도를 조정합니다. **Boss Health**, **Default Pattern**, **Pattern Overrides**의 X는 낮은 난이도 값, Y는 높은 난이도 값입니다. **Pattern Id**에는 `StudyRecords.cs`의 식별자(예: `fist_sweep`)를 입력합니다. 공격 간격은 배수이므로 높은 난이도를 더 촘촘하게 하려면 Y를 작게 설정합니다.

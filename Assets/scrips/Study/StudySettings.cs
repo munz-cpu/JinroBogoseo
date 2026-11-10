@@ -15,21 +15,20 @@ namespace BossTemplate
     {
         [Header("서버와 연구 버전")]
         public string apiUrl = "http://127.0.0.1:8000";
-        public string settingsVersion = "combat-v2";
-        public string consentVersion = "consent-v3";
+        public string settingsVersion = "combat-v3";
+        public string consentVersion = "consent-v4";
         [Header("동의와 사후 안내")]
         [TextArea(4, 10)] public string consentNotice =
-            "보스전에 도전해 보고, 공격을 피하는 재미와 전투 난이도가 어땠는지 알려주세요. " +
-            "학교 연구용 플레이테스트예요. 자세한 연구 질문과 플레이 조건은 끝난 뒤 알려드려요.\n\n" +
-            "도전 횟수, 시간, 피해량, 전투 진행과 난이도 조정 기록, 연령대, 게임 빈도, 별점을 참가자 ID로 연결해 기록해요. " +
-            "참여는 자유이고 언제든 그만둘 수 있어요.";
+            "진로 보고서에 쓸 자료를 모으는 보스전 테스트입니다. 자세한 목적과 플레이 조건은 게임이 끝난 뒤 안내합니다.\n\n" +
+            "도전 횟수, 플레이 시간, 피해량, 전투 진행, 난이도 변경, 연령대, 게임 빈도, 별점을 참가자 ID와 함께 기록합니다. " +
+            "참여는 자유이며 언제든 그만둘 수 있습니다.";
         public string retention = "";
         public string contact = "";
         [TextArea(3, 8)] public string debrief =
-            "플레이해 주셔서 고마워요! 이번 테스트에서는 보스에게 몇 번 도전했는지와 플레이 중 느낀 성취감이 어떤 관계인지 살펴봐요. " +
-            "이 질문을 미리 알면 플레이 방식에 영향을 줄 수 있어서 끝난 뒤에 알려드려요.\n\n" +
-            "목표 도전 횟수는 참가자마다 무작위로 배정됐어요. 도전 사이에 전투 기록과 목표까지 남은 횟수에 따라 보스의 공격과 체력이 조정됐고, " +
-            "목표 횟수 전에도 클리어할 수 있었어요. 원하면 아래 버튼으로 연구 데이터 제외를 요청할 수 있어요.";
+            "도전 횟수에 따라 성취감이 달라지는지 알아보는 테스트였습니다.\n\n" +
+            "목표 도전 횟수는 무작위로 정했습니다. 도전이 끝날 때마다 전투 기록과 목표까지 남은 횟수를 바탕으로 보스의 공격과 체력을 조정했습니다. " +
+            "목표보다 일찍 클리어할 수도 있었습니다.\n\n" +
+            "기록을 보고서에서 빼려면 아래 버튼을 눌러 주세요.";
         [Header("연구 난이도와 전투 배수")]
         [Range(0, 1)] public float minimumLevel = 0;
         [Range(0, 1)] public float maximumLevel = 1;

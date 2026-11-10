@@ -99,7 +99,9 @@ internal static class BossStudyChecks
         ReplacePrivate(study, "asset", settings);
 
         study.Decline();
-        Check(study.Screen == StudyScreen.Declined && storage.Load().declined, "Decline must persist");
+        var declined = storage.Load();
+        Check(study.Screen == StudyScreen.Declined && declined.declined, "Decline must persist");
+        ReplacePrivate(study, "state", declined);
         var reopenButton = Array.Find(panel.GetComponentsInChildren<UnityEngine.UI.Button>(),
             button => button.name == "참여 안내 다시 보기");
         Check(reopenButton && reopenButton.interactable, "Declined participants must be able to reopen consent");
@@ -107,8 +109,18 @@ internal static class BossStudyChecks
         var reopened = storage.Load();
         Check(study.Screen == StudyScreen.Consent && !reopened.declined && reopened.participant == null,
             "Reopening consent must clear the decline without enrolling");
-
-        study.Enroll("undisclosed", "undisclosed");
+        Check(ReferenceEquals(study.Protocol, settings.protocol), "Before enrollment, use the current Inspector protocol");
+        var panelData = new SerializedObject(panel);
+        foreach (string field in new[] { "ages", "frequencies" })
+        {
+            var choices = panelData.FindProperty(field);
+            var undisclosed = (UnityEngine.UI.Button)choices.GetArrayElementAtIndex(choices.arraySize - 1).objectReferenceValue;
+            Check(undisclosed.gameObject.activeInHierarchy, "The configured protocol must show the enrollment choices");
+            undisclosed.onClick.Invoke();
+        }
+        consentButton = (UnityEngine.UI.Button)panelData.FindProperty("enroll").objectReferenceValue;
+        Check(consentButton.interactable, "Selecting both choices must enable enrollment");
+        consentButton.onClick.Invoke();
         yield return Until(() => study.Screen == StudyScreen.Ready && SceneManager.GetActiveScene().path == StudySceneEntry.GamePath
             && UnityEngine.Object.FindAnyObjectByType<BossArena>()?.Study == study, "Server assignment and game scene");
         var arena = UnityEngine.Object.FindAnyObjectByType<BossArena>();
@@ -180,7 +192,12 @@ internal static class BossStudyChecks
         history[0] = Defeat(initial, .95f, 6, 100);
         var easier = AdaptiveDifficulty.Choose(profiles, history, 2, 12, now, out _);
         Check(easier.level < initial.level, "DDA should ease for a struggling player far from target");
-        var report = new List<string> { "PASS: four DDA checks. Synthetic play model, seed 315." };
+        Array.Resize(ref history[0].pattern_stats, (int)BossPattern.fist_jab);
+        var upgraded = AdaptiveDifficulty.Choose(profiles, history, 2, 12, now, out _);
+        Check(upgraded.patterns.Length == AdaptiveDifficulty.Patterns.Length
+            && upgraded.patterns[(int)BossPattern.fist_double_slam].pattern_id == nameof(BossPattern.fist_double_slam),
+            "Older attempt records must work with the expanded pattern list");
+        var report = new List<string> { "PASS: five DDA checks. Synthetic play model, seed 315." };
         var rng = new System.Random(315);
         foreach (int target in new[] { 3, 7, 12 })
         foreach (float skill in new[] { .25f, .5f, .75f })

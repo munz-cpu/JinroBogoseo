@@ -96,6 +96,7 @@ namespace BossTemplate
             float damage = 0;
             foreach (var attempt in history)
             {
+                if (pattern >= attempt.pattern_stats.Length) continue;
                 var stat = attempt.pattern_stats[pattern];
                 executions += stat.executions;
                 damage += stat.average_damage * stat.hit_count;

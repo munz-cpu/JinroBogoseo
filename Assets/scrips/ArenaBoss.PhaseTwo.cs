@@ -7,6 +7,7 @@ namespace BossTemplate
     {
         private static readonly Color FistLaneColor = new Color(1, .55f, .2f, .38f);
         private const float HockeyStrikeReach = .5f;
+        private const float HockeyWindupDuration = .26f;
         private const float HockeyHitstopDuration = .065f;
         private readonly float[] hockeyStrikeTimes = new float[2];
         private float hockeyHitstopUntil;
@@ -14,34 +15,22 @@ namespace BossTemplate
 
         private IEnumerator FightWithFists()
         {
+            yield return new WaitForSeconds(.85f);
+            BossPattern? previous = null;
             if (arena.Study)
             {
-                yield return new WaitForSeconds(.85f);
-                BossPattern? previousPattern = null;
                 while (!arena.Finished)
                 {
-                    BossPattern pattern = arena.Study.Pick(StudySession.PhaseTwo, previousPattern);
-                    previousPattern = pattern;
+                    BossPattern pattern = arena.Study.Pick(StudySession.PhaseTwo, previous);
+                    previous = pattern;
                     arena.Study.Executed(pattern);
-                    yield return pattern switch
-                    {
-                        BossPattern.fist_slams => FistSlams(),
-                        BossPattern.air_hockey => StoneAirHockey(),
-                        BossPattern.fist_sweep => FistSweep(),
-                        BossPattern.throw_mines => ThrowMines(),
-                        _ => BeginRollingPattern()
-                    };
+                    yield return RunFistPattern(pattern);
                     yield return new WaitForSeconds(.45f * arena.Parameters(pattern).interval);
                 }
                 yield break;
             }
 
-            var patterns = new System.Func<IEnumerator>[]
-            {
-                FistSlams, StoneAirHockey, FistSweep, ThrowMines, BeginRollingPattern
-            };
-            System.Func<IEnumerator> previous = null;
-            yield return new WaitForSeconds(.85f);
+            var patterns = (BossPattern[])StudySession.PhaseTwo.Clone();
             while (!arena.Finished)
             {
                 for (int i = patterns.Length - 1; i > 0; i--)
@@ -59,11 +48,26 @@ namespace BossTemplate
                 {
                     if (arena.Finished) yield break;
                     previous = pattern;
-                    yield return pattern();
+                    yield return RunFistPattern(pattern);
                     yield return new WaitForSeconds(.45f);
                 }
             }
         }
+
+        private IEnumerator RunFistPattern(BossPattern pattern) => pattern switch
+        {
+            BossPattern.fist_slams => FistSlams(),
+            BossPattern.air_hockey => StoneAirHockey(),
+            BossPattern.fist_sweep => FistSweep(),
+            BossPattern.throw_mines => ThrowMines(),
+            BossPattern.rolling_rocks => RollingRocks(),
+            BossPattern.fist_jab => FistJab(),
+            BossPattern.fist_uppercut => FistUppercut(),
+            BossPattern.fist_backhand => FistBackhand(),
+            BossPattern.fist_clap => FistClap(),
+            BossPattern.fist_double_slam => DoubleFistSlam(),
+            _ => throw new System.ArgumentOutOfRangeException(nameof(pattern))
+        };
 
         private IEnumerator FistSlams()
         {
@@ -100,9 +104,10 @@ namespace BossTemplate
 
             SpriteRenderer fist = fists[index];
             fistBusy[index] = true;
-            float x = ClampFistX(PlayerPosition.x, fist);
+            Vector2 target = PlayerPosition;
+            float x = ClampFistX(target.x, fist);
             float bottom = arena.GroundY + fist.bounds.extents.y;
-            float top = Mathf.Max(bottom + 9f, PlayerPosition.y + 5.5f);
+            float top = Mathf.Max(bottom + 9f, target.y + 5.5f);
             var raised = new Vector2(x, top);
             float raiseSpeed = 28 * speedMultiplier;
             float windup = .55f / speedMultiplier;
@@ -110,9 +115,8 @@ namespace BossTemplate
             Intent = "연속 내려찍기 예고";
             arena.Flash(new Vector2(x, (top + arena.GroundY) * .5f),
                 new Vector2(fist.bounds.size.x * arena.Parameters(BossPattern.fist_slams).hitbox, top - arena.GroundY), FistLaneColor, lead);
-            fistWindupUntil[index] = Time.time + lead;
-            yield return MoveFist(fist, raised, raiseSpeed);
-            yield return new WaitForSeconds(windup);
+            var gather = new Vector2(x, Mathf.Min(top, target.y + 3.4f));
+            yield return WindUpFist(index, gather, raised, lead);
         }
 
         internal Rect AirHockeyCourt => arena.GetAirHockeyCourt(fists[0].bounds.extents.x);
@@ -144,6 +148,7 @@ namespace BossTemplate
             ArenaProjectile puck = arena.Finished ? null : arena.SpawnRock(BossPattern.air_hockey,
                 new Vector2(court.xMin, HockeyServeHeight(court)), Vector2.right * 17.5f, 20,
                 RockFlight.AirHockey, holdTime: 2f);
+            fistWindupUntil[0] = Time.time + serveWarning;
             for (float elapsed = 0; elapsed < serveWarning && !arena.Finished; elapsed += Time.deltaTime)
             {
                 court = AirHockeyCourt;
@@ -169,6 +174,8 @@ namespace BossTemplate
                         {
                             float y = fists[i].transform.position.y;
                             if (i == receiver) y = Mathf.MoveTowards(y, receiveY, Time.deltaTime * 24);
+                            if (i == receiver && secondsToHit <= HockeyWindupDuration)
+                                fistWindupUntil[i] = Time.time + secondsToHit;
                             float timeSinceStrike = Time.unscaledTime - hockeyStrikeTimes[i];
                             float stroke = timeSinceStrike < .15f
                                 ? Mathf.SmoothStep(HockeyStrikeReach, 0, timeSinceStrike / .15f)
@@ -189,6 +196,7 @@ namespace BossTemplate
         {
             hockeyHitstopUntil = Time.unscaledTime + HockeyHitstopDuration;
             hockeyStrikeTimes[paddle] = hockeyHitstopUntil;
+            fistWindupUntil[paddle] = 0;
             fists[paddle].transform.position = HockeyPaddlePosition(paddle, AirHockeyCourt, impactY, HockeyStrikeReach);
         }
 
@@ -206,11 +214,10 @@ namespace BossTemplate
 
         private static float HockeyStrikeOffset(float secondsToHit)
         {
-            const float windup = .26f;
             const float strike = .09f;
-            const float pullback = -.65f;
+            const float pullback = -1.15f;
             if (secondsToHit >= strike)
-                return Mathf.SmoothStep(0, pullback, (windup - secondsToHit) / (windup - strike));
+                return Mathf.SmoothStep(0, pullback, (HockeyWindupDuration - secondsToHit) / (HockeyWindupDuration - strike));
             float t = Mathf.Clamp01(1 - secondsToHit / strike);
             return Mathf.Lerp(pullback, HockeyStrikeReach, t * t);
         }
@@ -247,12 +254,12 @@ namespace BossTemplate
             }
 
             float lockedY = fist.transform.position.y;
-            fistWindupUntil[index] = Time.time + warning;
             Intent = "수평 쓸기 예고";
             var lockedColor = new Color(1, .35f, .12f, .65f);
             if (lane) lane.GetComponent<ArenaEffect>().Show(laneCenter, laneSize, lockedColor, warning);
             else arena.Flash(laneCenter, laneSize, lockedColor, warning);
-            yield return new WaitForSeconds(warning);
+            var sweepStart = new Vector2(startX, lockedY);
+            yield return WindUpFist(index, sweepStart + Vector2.up * .9f, sweepStart, warning);
             if (arena.Finished) yield break;
 
             Intent = "수평 쓸기";
@@ -286,17 +293,13 @@ namespace BossTemplate
             float throwHeight = Mathf.Max(arena.GroundY + 8.5f, PlayerPosition.y + 2.5f);
             var leftRaised = new Vector2(leftStart.x, throwHeight);
             var rightRaised = new Vector2(rightStart.x, throwHeight);
-            for (float elapsed = 0; elapsed < liftTime && !arena.Finished; elapsed += Time.deltaTime)
-            {
-                float t = Mathf.SmoothStep(0, 1, elapsed / liftTime);
-                fists[0].transform.position = Vector2.Lerp(leftStart, leftRaised, t);
-                fists[1].transform.position = Vector2.Lerp(rightStart, rightRaised, t);
-                yield return null;
-            }
+            float gatherHeight = Mathf.Min(throwHeight - 1, PlayerPosition.y + 3.4f);
+            var leftGather = new Vector2(ClampFistX(leftStart.x - 1.2f, fists[0]), gatherHeight);
+            var rightGather = new Vector2(ClampFistX(rightStart.x + 1.2f, fists[1]), gatherHeight);
+            var leftWindup = StartCoroutine(WindUpFist(0, leftGather, leftRaised, liftTime + windup));
+            yield return WindUpFist(1, rightGather, rightRaised, liftTime + windup);
+            yield return leftWindup;
             if (arena.Finished) yield break;
-            fists[0].transform.position = leftRaised;
-            fists[1].transform.position = rightRaised;
-            yield return new WaitForSeconds(windup);
 
             Intent = "돌 지뢰 투척";
             for (int i = 0; i < mineCount && !arena.Finished; i++)
@@ -313,15 +316,21 @@ namespace BossTemplate
             holdBothFists = false;
         }
 
-        private IEnumerator BeginRollingPattern()
-        {
-            Intent = "바닥 구르는 돌";
-            StartCoroutine(RollingRocks());
-            yield return null;
-        }
-
         private IEnumerator RollingRocks()
         {
+            Intent = "구르는 돌 예고";
+            fistBusy[0] = fistBusy[1] = true;
+            Vector2 left = fists[0].transform.position;
+            Vector2 right = fists[1].transform.position;
+            Vector2 pullback = new Vector2(1.2f, .65f);
+            var leftWindup = StartCoroutine(WindUpFist(0, left + pullback, left + Vector2.left, .55f));
+            yield return WindUpFist(1, right + new Vector2(-pullback.x, pullback.y), right + Vector2.right, .55f);
+            yield return leftWindup;
+            if (arena.Finished) yield break;
+
+            Intent = "바닥 구르는 돌";
+            StartCoroutine(ReturnFist(0));
+            StartCoroutine(ReturnFist(1));
             for (int i = 0; i < 8 && !arena.Finished; i++)
             {
                 Bounds bounds = arena.GroundBounds;
@@ -331,6 +340,139 @@ namespace BossTemplate
                     16, RockFlight.Rolling, holdTime: .28f);
                 yield return new WaitForSeconds(.45f);
             }
+        }
+
+        private IEnumerator FistJab()
+        {
+            Vector2 target = PlayerPosition;
+            int index = target.x < transform.position.x ? 0 : 1;
+            float direction = index == 0 ? 1 : -1;
+            SpriteRenderer fist = fists[index];
+            float y = Mathf.Max(arena.GroundY + fist.bounds.extents.y, target.y);
+            var start = new Vector2(ClampFistX(target.x - direction * 6, fist), y);
+            var end = new Vector2(ClampFistX(target.x + direction * 1.5f, fist), y);
+            return StrikeFist(index, start, end, BossPattern.fist_jab, "잽", 28, 17);
+        }
+
+        private IEnumerator FistUppercut()
+        {
+            Vector2 target = PlayerPosition;
+            int index = target.x < transform.position.x ? 0 : 1;
+            SpriteRenderer fist = fists[index];
+            float x = ClampFistX(target.x, fist);
+            float bottom = arena.GroundY + fist.bounds.extents.y;
+            return StrikeFist(index, new Vector2(x, bottom), new Vector2(x, Mathf.Max(bottom + 5.5f, target.y + 2)),
+                BossPattern.fist_uppercut, "어퍼컷", 24, 19);
+        }
+
+        private IEnumerator FistBackhand()
+        {
+            Vector2 target = PlayerPosition;
+            // The far hand reaches across the player instead of attacking from the same side as the jab.
+            int index = target.x < transform.position.x ? 1 : 0;
+            float direction = index == 0 ? 1 : -1;
+            SpriteRenderer fist = fists[index];
+            float y = Mathf.Max(arena.GroundY + fist.bounds.extents.y, target.y);
+            var start = new Vector2(ClampFistX(target.x - direction * 5.5f, fist), y + 4.5f);
+            var end = new Vector2(ClampFistX(target.x + direction * 2.5f, fist), y);
+            return StrikeFist(index, start, end, BossPattern.fist_backhand, "후려치기", 23, 20);
+        }
+
+        private IEnumerator FistClap()
+        {
+            Vector2 target = PlayerPosition;
+            Vector2 half = fists[0].bounds.extents;
+            float outer = half.x + 4f;
+            float inner = half.x;
+            float x = ClampPairedFistCenter(target.x, outer + half.x);
+            float hitbox = arena.Parameters(BossPattern.fist_clap).hitbox;
+            // Leave room to crouch under a low clap at every difficulty level.
+            float y = Mathf.Max(arena.GroundY + half.y * hitbox + 1.4f, target.y);
+            var left = StartCoroutine(StrikeFist(0, new Vector2(x - outer, y), new Vector2(x - inner, y),
+                BossPattern.fist_clap, "양손 박수", 19, 21));
+            yield return StrikeFist(1, new Vector2(x + outer, y), new Vector2(x + inner, y),
+                BossPattern.fist_clap, "양손 박수", 19, 21);
+            yield return left;
+        }
+
+        private IEnumerator DoubleFistSlam()
+        {
+            Vector2 target = PlayerPosition;
+            Vector2 half = fists[0].bounds.extents;
+            float offset = half.x * 1.2f + 1.6f;
+            float x = ClampPairedFistCenter(target.x, offset + half.x);
+            float bottom = arena.GroundY + half.y;
+            float top = Mathf.Max(bottom + 6.5f, target.y + 3.5f);
+            var left = StartCoroutine(StrikeFist(0, new Vector2(x - offset, top), new Vector2(x - offset, bottom),
+                BossPattern.fist_double_slam, "양손 내려찍기", 24, 22));
+            yield return StrikeFist(1, new Vector2(x + offset, top), new Vector2(x + offset, bottom),
+                BossPattern.fist_double_slam, "양손 내려찍기", 24, 22);
+            yield return left;
+        }
+
+        private float ClampPairedFistCenter(float x, float clearance)
+        {
+            Bounds bounds = arena.GroundBounds;
+            return Mathf.Clamp(x, bounds.min.x + clearance, bounds.max.x - clearance);
+        }
+
+        private IEnumerator StrikeFist(int index, Vector2 start, Vector2 end, BossPattern pattern,
+            string attack, float speed, float damage)
+        {
+            if (arena.Finished) yield break;
+            SpriteRenderer fist = fists[index];
+            var parameters = arena.Parameters(pattern);
+            float lead = .35f + Mathf.Clamp(.58f * parameters.interval, .5f, .72f);
+            Vector2 path = end - start;
+            Vector2 direction = path.normalized;
+            Vector2 size = fist.bounds.size * parameters.hitbox;
+            float along = Mathf.Abs(direction.x) * size.x + Mathf.Abs(direction.y) * size.y;
+            float across = Mathf.Abs(direction.y) * size.x + Mathf.Abs(direction.x) * size.y;
+            var lane = arena.Flash((start + end) * .5f, new Vector2(path.magnitude + along, across), FistLaneColor, lead);
+            if (lane) lane.transform.rotation = Quaternion.Euler(0, 0, Mathf.Atan2(path.y, path.x) * Mathf.Rad2Deg);
+
+            fistBusy[index] = true;
+            if (path.x != 0) fist.flipX = path.x < 0;
+            Intent = attack + " 예고";
+            Vector2 pose = start - direction * 1.35f;
+            if (pattern == BossPattern.fist_uppercut)
+                pose = start + new Vector2(index == 0 ? -1.25f : 1.25f, .85f);
+            pose.x = ClampFistX(pose.x, fist);
+            if (direction.y < 0) pose.y = Mathf.Min(pose.y, PlayerPosition.y + 3.4f);
+            yield return WindUpFist(index, pose, start, lead);
+            if (arena.Finished) yield break;
+
+            Intent = attack;
+            yield return MoveFist(fist, end, speed, damage, pattern);
+            if (arena.Finished) yield break;
+            if (pattern == BossPattern.fist_double_slam)
+            {
+                var impact = new Vector2(end.x, arena.GroundY);
+                arena.ShowRockLandingDust(impact, fist.bounds.size.x, playSound: false);
+                if (index == 0)
+                {
+                    arena.ShakeImpact(impact, Vector2.down * .32f);
+                    arena.PlayEffect(fistSlamSound);
+                }
+            }
+            yield return ReturnFist(index);
+        }
+
+        private IEnumerator WindUpFist(int index, Vector2 pose, Vector2 ready, float duration)
+        {
+            SpriteRenderer fist = fists[index];
+            Vector2 origin = fist.transform.position;
+            fistWindupUntil[index] = Time.time + duration;
+            for (float elapsed = 0; elapsed < duration && !arena.Finished; elapsed += Time.deltaTime)
+            {
+                float t = elapsed / duration;
+                fist.transform.position = t < .55f
+                    ? Vector2.Lerp(origin, pose, Mathf.SmoothStep(0, 1, t / .55f))
+                    : Vector2.Lerp(pose, ready, Mathf.SmoothStep(0, 1, (t - .76f) / .24f));
+                yield return null;
+            }
+            if (!arena.Finished) fist.transform.position = ready;
+            fistWindupUntil[index] = 0;
         }
 
         private float ClampFistX(float x, SpriteRenderer fist)

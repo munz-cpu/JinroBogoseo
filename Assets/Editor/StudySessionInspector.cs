@@ -35,6 +35,7 @@ internal sealed class StudySessionInspector : Editor
         {
             EditorGUILayout.LabelField("실험 그룹", assignment.experiment_group);
             EditorGUILayout.LabelField("목표 도전 횟수", assignment.target_attempts.ToString());
+            if (assignment.FixedHard) EditorGUILayout.LabelField("난이도 방식", "고정 어려움");
         }
 
         var active = state?.active;
@@ -107,7 +108,7 @@ internal sealed class StudySessionInspector : Editor
         previewAssignment = state?.assignment;
         var history = state != null ? (System.Collections.Generic.IReadOnlyList<AttemptRecord>)state.recent : Array.Empty<AttemptRecord>();
         preview = AdaptiveDifficulty.Choose(protocol, history, (state?.attempts ?? 0) + 1,
-            previewAssignment?.target_attempts ?? 1, StudySession.Now(), out _);
+            previewAssignment?.target_attempts ?? 1, StudySession.Now(), out _, previewAssignment?.FixedHard == true);
         return preview;
     }
 

@@ -16,7 +16,7 @@ from sheets import SheetsMirror
 from store import Store, StoreError
 
 log = logging.getLogger("research.api")
-DEFAULT_GROUPS = '[{"group":"A","target_attempts":3,"weight":1},{"group":"B","target_attempts":7,"weight":1},{"group":"C","target_attempts":12,"weight":1}]'
+DEFAULT_GROUPS = '[{"group":"A","target_attempts":3,"weight":1},{"group":"B","target_attempts":7,"weight":1},{"group":"C","target_attempts":12,"weight":1},{"group":"D","target_attempts":12,"weight":1}]'
 
 
 def create_app():
@@ -25,7 +25,7 @@ def create_app():
         groups = TypeAdapter(list[Group]).validate_json(os.getenv("RESEARCH_GROUPS", DEFAULT_GROUPS))
         if not groups or len({g.group for g in groups}) != len(groups):
             raise ValueError("RESEARCH_GROUPS requires unique group names")
-        version = TypeAdapter(Label).validate_python(os.getenv("RESEARCH_ASSIGNMENT_VERSION", "assignment-v1"))
+        version = TypeAdapter(Label).validate_python(os.getenv("RESEARCH_ASSIGNMENT_VERSION", "assignment-v2"))
         app.state.store = Store(os.getenv("RESEARCH_DB", "study.sqlite3"), groups, version)
         app.state.store.initialize()
         app.state.admin_token = os.getenv("RESEARCH_ADMIN_TOKEN", "")

@@ -147,7 +147,7 @@ namespace BossTemplate
             string now = Now();
             int number = state.attempts + 1;
             var difficulty = AdaptiveDifficulty.Choose(Protocol, state.recent, number,
-                state.assignment.target_attempts, now, out var change);
+                state.assignment.target_attempts, now, out var change, state.assignment.FixedHard);
             state.active = new AttemptRecord
             {
                 participant_id = state.participant.participant_id, attempt_id = Guid.NewGuid().ToString("D"),

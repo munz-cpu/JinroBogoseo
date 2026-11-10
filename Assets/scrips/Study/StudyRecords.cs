@@ -20,6 +20,7 @@ namespace BossTemplate
     {
         public string experiment_group, assignment_version;
         public int target_attempts;
+        internal bool FixedHard => experiment_group == "D";
     }
 
     [Serializable] internal sealed class PatternParameters

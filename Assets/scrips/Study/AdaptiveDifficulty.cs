@@ -10,14 +10,16 @@ namespace BossTemplate
         internal static readonly PatternParameters Neutral = new PatternParameters();
 
         internal static DifficultySnapshot Choose(StudyProtocol settings, IReadOnlyList<AttemptRecord> history,
-            int nextAttempt, int target, string now, out DifficultyChange change)
+            int nextAttempt, int target, string now, out DifficultyChange change, bool fixedHard = false)
         {
             float minimum = Mathf.Clamp01(Mathf.Min(settings.minimumLevel, settings.maximumLevel));
             float maximum = Mathf.Clamp01(Mathf.Max(settings.minimumLevel, settings.maximumLevel));
+            if (fixedHard) history = Array.Empty<AttemptRecord>();
             AttemptRecord last = history.Count > 0 ? history[history.Count - 1] : null;
-            float previous = last == null ? Mathf.Clamp(settings.initialLevel, minimum, maximum) : last.difficulty.level;
+            float previous = fixedHard ? maximum
+                : last == null ? Mathf.Clamp(settings.initialLevel, minimum, maximum) : last.difficulty.level;
             float level = previous;
-            string reason = "initial";
+            string reason = fixedHard ? "fixed_hard" : "initial";
 
             if (last != null)
             {

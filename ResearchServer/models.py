@@ -63,7 +63,7 @@ class DifficultyChange(Payload):
     applied_at: AwareDatetime
     previous_level: Ratio
     new_level: Ratio
-    reason: Literal["initial", "ahead_of_target", "near_target", "struggling", "hold"]
+    reason: Literal["initial", "ahead_of_target", "near_target", "struggling", "hold", "fixed_hard"]
 
 
 class PatternStat(Payload):

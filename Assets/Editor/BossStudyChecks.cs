@@ -73,7 +73,7 @@ internal static class BossStudyChecks
             if (current is IEnumerator nested) stack.Push(nested);
             else yield return current;
         }
-        Report("PASS: start → intro → game → review, consent, assignment, UUID reload, early victory, offline retry, rating, new study, withdrawal");
+        Report("PASS: start → intro → game → review, consent, assignment, UUID reload, early victory, offline retry, rating, new study, withdrawal, offline enrollment and archive upload");
     }
 
     private static void Report(string result)
@@ -436,6 +436,39 @@ internal static class BossStudyChecks
         yield return Until(() => study.Screen == StudyScreen.Withdrawal && !study.WithdrawalPending, "Confirmed withdrawal");
         saved = storage.Load();
         Check(saved.withdrawn && saved.participant == null && string.IsNullOrEmpty(saved.token), "Local study data removed");
+
+        settings.protocol.apiUrl = "";
+        ReplacePrivate(study, "state", new StudySave());
+        typeof(StudySession).GetMethod("Show", BindingFlags.Instance | BindingFlags.NonPublic)
+            .Invoke(study, new object[] { StudyScreen.Consent });
+        yield return Until(() => study.Screen == StudyScreen.Consent && SceneManager.GetActiveScene().path == StudySceneEntry.IntroPath,
+            "Open consent without a configured server");
+        panel = UnityEngine.Object.FindAnyObjectByType<StudyPanel>();
+        var offlineButton = Array.Find(panel.GetComponentsInChildren<Button>(), button => button.name == "동의하고 오프라인 시작");
+        Check(offlineButton && offlineButton.interactable, "Offline consent is available without an endpoint");
+        offlineButton.onClick.Invoke();
+        yield return Until(() => study.InCombat && SceneManager.GetActiveScene().path == StudySceneEntry.GamePath,
+            "Offline consent starts combat before any registration request");
+        saved = storage.Load();
+        string offlineParticipant = saved.participant.participant_id;
+        Check(saved.offlineRegistrationPending && saved.assignment.assignment_version == "offline-v1"
+            && saved.active.attempt_number == 1, "Offline registration, assignment and attempt survive a save reload");
+        arena = UnityEngine.Object.FindAnyObjectByType<BossArena>();
+        arena.SkipCurrentPhase();
+        yield return Until(() => arena.Boss.Phase == 2 && !arena.Boss.Transitioning, "Offline study enters phase two");
+        arena.SkipCurrentPhase();
+        yield return Until(() => study.Screen == StudyScreen.Survey, "Offline study can clear");
+        study.SubmitRating(4);
+        yield return Until(() => study.Screen == StudyScreen.Debrief && SceneManager.GetActiveScene().path == StudySceneEntry.ReviewPath,
+            "Offline rating opens debrief");
+        study.StartNewStudy();
+        archived = new List<StudySave>(storage.LoadPendingArchives(null));
+        Check(archived.Count == 1 && archived[0].participant.participant_id == offlineParticipant
+            && archived[0].offlineRegistrationPending && archived[0].pending.Count == 2,
+            "Archive retains registration and both queued records before a server is configured");
+        settings.protocol.apiUrl = Endpoint;
+        yield return Until(() => new List<StudySave>(storage.LoadPendingArchives(null)).Count == 0,
+            "Offline archive registers with the same assignment and uploads attempt and rating");
     }
 
     private static void ReplacePrivate(StudySession session, string name, object value) =>

@@ -50,10 +50,11 @@ class StudyTest(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         return response.json()
 
-    def attempt(self):
+    def attempt(self, assignment=None):
         return {
             "participant_id": self.p["participant_id"], "attempt_id": str(uuid4()), "attempt_number": 1,
-            **self.register(), "settings_version": "v1", "started_at": NOW, "ended_at": "2026-01-01T00:01:00Z",
+            **(assignment if assignment is not None else self.register()), "settings_version": "v1",
+            "started_at": NOW, "ended_at": "2026-01-01T00:01:00Z",
             "duration_seconds": 60, "damage_taken": 10, "damage_dealt": 500, "boss_hp_remaining": 0,
             "pattern_stats": [{"pattern_id": "dash", "executions": 2, "hit_count": 1, "average_damage": 10, "damage_taken": 10}],
             "difficulty": {"level": .5, "boss_health": 1, "patterns": [
@@ -96,6 +97,27 @@ class StudyTest(unittest.TestCase):
         restarted = Store(db, groups[:1], "weighted-v2")
         restarted.initialize()
         self.assertEqual(restarted.register(p, TOKEN), assigned)
+
+    def test_offline_registration_keeps_local_assignment_and_accepts_queued_records(self):
+        for slot, (group, target) in enumerate(zip("ABCD", (3, 7, 12, 12))):
+            self.p["participant_id"] = f"34d82303-e4b5-481c-a29b-b621f30cd90{slot}"
+            expected = {"experiment_group": group, "target_attempts": target, "assignment_version": "offline-v1"}
+            attempt = self.attempt(expected)
+            self.assertEqual(self.post("/attempts", attempt).status_code, 403)
+            for _ in range(2):
+                response = self.post("/participants/offline", self.p)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json(), expected)
+            self.assertEqual(self.post("/participants/offline", self.p, OTHER_TOKEN).status_code, 403)
+            self.assertEqual(self.post("/attempts", {**attempt, "target_attempts": 1}).status_code, 409)
+            for _ in range(2):
+                self.assertEqual(self.post("/attempts", attempt).status_code, 204)
+            self.assertEqual(self.post("/surveys", {**self.survey(), "scores": [4]}).status_code, 204)
+
+    def test_offline_registration_cannot_replace_an_online_assignment(self):
+        expected = self.register()
+        self.assertEqual(self.post("/participants/offline", self.p).status_code, 409)
+        self.assertEqual(self.register(), expected)
 
     def test_early_clear_retry_validation_and_survey(self):
         attempt = self.attempt()

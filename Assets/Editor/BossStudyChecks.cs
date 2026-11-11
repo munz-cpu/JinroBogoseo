@@ -257,13 +257,29 @@ internal static class BossStudyChecks
         buttons[2].OnPointerExit(pointer);
         Check(stars[0].color.a == stars[2].color.a && stars[2].color.a == stars[3].color.a,
             "Pointer exit clears the preview");
+        study.Protocol.apiUrl = "http://127.0.0.1:1";
         buttons[4].OnPointerClick(pointer);
         yield return Until(() => stars[4].color.a == 1 && stars[4].rectTransform.localScale.x > 1,
             "Click expands the selected star");
         yield return Until(() => study.Screen == StudyScreen.Debrief && SceneManager.GetActiveScene().path == StudySceneEntry.ReviewPath
-            && !study.HasPending && !study.Frozen, "Persist rating, restore time and open the debrief");
+            && !study.Frozen, "Persist rating, restore time and open the debrief");
         Check(Time.timeScale == 1 && !UnityEngine.Object.FindAnyObjectByType<BossArena>(), "Debrief unloads the frozen arena");
         var review = UnityEngine.Object.FindAnyObjectByType<StudyPanel>();
+        var reviewData = new SerializedObject(review);
+        var reviewScenery = (GameObject)reviewData.FindProperty("debriefScenery").objectReferenceValue;
+        var reviewBackdrop = (GameObject)reviewData.FindProperty("studyBackdrop").objectReferenceValue;
+        Check(reviewScenery.activeInHierarchy && !reviewBackdrop.activeSelf, "Debrief shows the battle backdrop");
+        Check(((Text)reviewData.FindProperty("debrief").objectReferenceValue).text == study.Protocol.debrief,
+            "Debrief preserves the full configured notice");
+        var retryStatus = (Text)reviewData.FindProperty("debriefStatus").objectReferenceValue;
+        var debriefRetry = (Button)reviewData.FindProperty("debriefRetry").objectReferenceValue;
+        yield return Until(() => study.SyncStatus.Length > 0 && retryStatus.isActiveAndEnabled && debriefRetry.isActiveAndEnabled,
+            "Review shows the failure and retry in the new layout");
+        Check(!((Text)reviewData.FindProperty("status").objectReferenceValue).gameObject.activeSelf,
+            "Review shows one network message");
+        study.Protocol.apiUrl = Endpoint;
+        debriefRetry.onClick.Invoke();
+        yield return Until(() => !study.HasPending && !retryStatus.gameObject.activeSelf, "Review retry syncs the rating");
         var replay = Array.Find(review.GetComponentsInChildren<UnityEngine.UI.Button>(),
             button => button.name == "다시 하기");
         Check(replay && replay.interactable, "Replay should be available after sync");

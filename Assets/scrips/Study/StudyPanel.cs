@@ -17,10 +17,14 @@ namespace BossTemplate
         [SerializeField] private Text ratingTitle, debrief, participant, contact, withdrawalMessage;
         [SerializeField] private StudyMainMenu mainMenu;
         [SerializeField] private GameObject studyBackdrop;
+        [SerializeField] private GameObject debriefScenery;
+        [SerializeField] private ScrollRect debriefScroll;
         [SerializeField] private Sprite victoryStar;
         [SerializeField] private StudyRatingButton[] ratings;
         [SerializeField] private Button skipRating, withdraw, retry, replay;
         [SerializeField] private Text status;
+        [SerializeField] private Text debriefStatus;
+        [SerializeField] private Button debriefRetry;
         [SerializeField] private bool useSceneFonts;
 
         private StudySession session;
@@ -56,6 +60,7 @@ namespace BossTemplate
             Listen(skipRating, () => session.SubmitRating(null));
             Listen(withdraw, session.Withdraw);
             Listen(retry, session.Retry);
+            Listen(debriefRetry, session.Retry);
             Listen(replay, session.StartNewStudy);
 
             for (int i = 0; i < ratings.Length; i++)
@@ -97,7 +102,9 @@ namespace BossTemplate
         {
             if (activeScreen) activeScreen.SetActive(false);
             mainMenu?.SetSceneryVisible(screen == StudyScreen.Title);
-            if (studyBackdrop) studyBackdrop.SetActive(screen != StudyScreen.Title);
+            bool showDebriefScenery = debriefScenery && screen == StudyScreen.Debrief;
+            if (debriefScenery) debriefScenery.SetActive(showDebriefScenery);
+            if (studyBackdrop) studyBackdrop.SetActive(screen != StudyScreen.Title && !showDebriefScenery);
             activeScreen = screens[(int)screen];
             if (!activeScreen)
             {
@@ -145,7 +152,8 @@ namespace BossTemplate
             activeScreen.SetActive(true);
             mainMenu?.ShowBack(screen is StudyScreen.Consent or StudyScreen.Waiting or StudyScreen.Declined);
             if (screen == StudyScreen.Title) mainMenu?.Show();
-            if (activeScreen.TryGetComponent(out ScrollRect scroll))
+            var scroll = screen == StudyScreen.Debrief && debriefScroll ? debriefScroll : activeScreen.GetComponent<ScrollRect>();
+            if (scroll)
             {
                 scroll.StopMovement();
                 scroll.verticalNormalizedPosition = 1;
@@ -191,14 +199,24 @@ namespace BossTemplate
         {
             if (session.Screen == StudyScreen.Title) mainMenu?.RefreshPlayLabel();
             if (replay) replay.interactable = session.CanReplay;
-            if (!status) return;
             bool showNetwork = session.Screen is StudyScreen.Waiting or StudyScreen.Ready or StudyScreen.Survey or StudyScreen.Debrief
                 || (session.Screen == StudyScreen.Withdrawal && session.WithdrawalPending);
             string message = session.SyncStatus;
             if (string.IsNullOrEmpty(message) && session.HasPending) message = "기록 전송 대기 중";
-            status.text = message;
-            status.gameObject.SetActive(showNetwork && message.Length > 0);
-            retry.gameObject.SetActive(showNetwork && message.Length > 0);
+            bool showStatus = showNetwork && message.Length > 0;
+            bool useDebriefStatus = session.Screen == StudyScreen.Debrief && debriefStatus;
+            RenderNetworkStatus(status, retry, message, showStatus && !useDebriefStatus);
+            RenderNetworkStatus(debriefStatus, debriefRetry, message, showStatus && useDebriefStatus);
+        }
+
+        private static void RenderNetworkStatus(Text label, Button action, string message, bool visible)
+        {
+            if (label)
+            {
+                label.text = message;
+                label.gameObject.SetActive(visible);
+            }
+            if (action) action.gameObject.SetActive(visible);
         }
 
         private static void Listen(Button button, UnityAction callback)

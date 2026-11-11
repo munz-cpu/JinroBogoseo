@@ -61,7 +61,8 @@ namespace BossTemplate
         internal bool HasContinuation => state.participant != null && !state.debrief;
         private bool CanPause => !fatal && !changingScene && (Screen is StudyScreen.Ready or StudyScreen.Defeat
             || InCombat && !arena.CombatEnded);
-        private float ElapsedSeconds => (Paused ? pausedAt : Time.realtimeSinceStartup) - startTime;
+        private float ElapsedSeconds => (Paused ? pausedAt : (arena ? arena.Boss.DefeatedAt : null)
+            ?? Time.realtimeSinceStartup) - startTime;
         internal bool Cleared => state.cleared;
         internal bool WithdrawalPending => state.withdrawalPending;
         // A save written before enrollment can deserialize with an empty protocol object.
@@ -310,7 +311,8 @@ namespace BossTemplate
         {
             var attempt = state.active;
             attempt.duration_seconds = ElapsedSeconds;
-            string now = Now();
+            string now = arena.Boss.DefeatedAt is float defeatedAt
+                ? DateTime.UtcNow.AddSeconds(defeatedAt - Time.realtimeSinceStartup).ToString("O") : Now();
             attempt.ended_at = string.CompareOrdinal(now, attempt.started_at) >= 0 ? now : attempt.started_at;
             attempt.boss_hp_remaining = arena.StudyBossHealthRemaining;
             attempt.boss_phase = arena.Boss.Phase;
@@ -469,7 +471,7 @@ namespace BossTemplate
         private void Update()
         {
             if (fatal || state == null) return;
-            if (InCombat && !Paused && arena.CombatEnded)
+            if (InCombat && !Paused && arena.ResultsReady)
                 Finish(arena.Player.Health.Dead ? "defeat" : "cleared");
             if (InCombat && !Paused && Time.realtimeSinceStartup >= checkpointAt)
             {

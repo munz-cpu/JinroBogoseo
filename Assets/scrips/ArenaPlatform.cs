@@ -6,14 +6,15 @@ namespace BossTemplate
     public sealed class ArenaPlatform : MonoBehaviour
     {
         private SpriteRenderer surface;
-        public Bounds Bounds
+        internal SpriteRenderer Surface
         {
             get
             {
                 if (!surface) surface = GetComponent<SpriteRenderer>();
-                return surface.bounds;
+                return surface;
             }
         }
+        public Bounds Bounds => Surface.bounds;
 
         public bool TryLand(Vector2 previous, Vector2 next, Vector2 halfSize, out float centerY)
         {

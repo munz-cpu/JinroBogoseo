@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
@@ -10,34 +11,33 @@ namespace BossTemplate
         private const float Duration = .22f;
         private static readonly AnimationCurve ScaleCurve = AnimationCurve.EaseInOut(0, 0, 1, 1);
 
-        private RectTransform label;
-        private Vector3 restScale;
+        private Button button;
+        private (RectTransform rect, Vector3 restScale)[] labels;
+        private bool pointerOver;
         private float elapsed = Duration;
         private float scale = 1, startScale = 1, targetScale = 1;
 
-        internal static void Attach(Transform root)
+        internal static void Attach(Button button)
         {
-            if (!root) return;
-            foreach (var text in root.GetComponentsInChildren<Text>(true))
-            {
-                if (text.TryGetComponent<StudyTextHover>(out _)) continue;
-                var hover = text.gameObject.AddComponent<StudyTextHover>();
-                hover.label = text.rectTransform;
-                hover.restScale = hover.label.localScale;
-                text.raycastTarget = true;
-            }
+            if (button.TryGetComponent<StudyTextHover>(out _)) return;
+            var text = button.GetComponentsInChildren<Text>(true);
+            if (text.Length == 0) return;
+
+            var hover = button.gameObject.AddComponent<StudyTextHover>();
+            hover.button = button;
+            hover.labels = Array.ConvertAll(text, label => (label.rectTransform, label.rectTransform.localScale));
         }
 
         public void OnPointerEnter(PointerEventData eventData)
         {
             if (eventData is ExtendedPointerEventData pointer && pointer.pointerType != UIPointerType.MouseOrPen) return;
-            AnimateTo(1.07f);
+            pointerOver = true;
         }
 
         public void OnPointerExit(PointerEventData eventData)
         {
             if (eventData is ExtendedPointerEventData pointer && pointer.pointerType != UIPointerType.MouseOrPen) return;
-            AnimateTo(1);
+            pointerOver = false;
         }
 
         private void AnimateTo(float target)
@@ -50,17 +50,26 @@ namespace BossTemplate
 
         private void Update()
         {
+            AnimateTo(pointerOver && button.isActiveAndEnabled && button.IsInteractable() ? 1.07f : 1);
             if (elapsed >= Duration) return;
             elapsed = Mathf.Min(Duration, elapsed + Time.unscaledDeltaTime);
             scale = Mathf.Lerp(startScale, targetScale, ScaleCurve.Evaluate(elapsed / Duration));
-            label.localScale = restScale * scale;
+            ApplyScale();
         }
 
         private void OnDisable()
         {
-            if (label) label.localScale = restScale;
+            pointerOver = false;
             scale = targetScale = 1;
             elapsed = Duration;
+            ApplyScale();
+        }
+
+        private void ApplyScale()
+        {
+            if (labels == null) return;
+            foreach (var (rect, restScale) in labels)
+                if (rect) rect.localScale = restScale * scale;
         }
     }
 }

@@ -46,11 +46,14 @@ namespace BossTemplate
         private Vector3 neutralPosition, neutralScale, warningOffset;
         private Quaternion neutralRotation;
         private int neutralSortingOrder;
+        private SpriteMaskInteraction neutralMaskInteraction;
+        private SpriteMask groundMask;
         private Color neutralColor;
         private float warningTilt, poseDuration;
         private float giantFollowVelocity;
         [SerializeField, InspectorName("골렘 주먹 렌더러")] private SpriteRenderer[] fists;
         private readonly SpriteRenderer[] battleFists = new SpriteRenderer[TotalFistCount];
+        private readonly int[] fistSortingOrders = new int[OriginalFistCount];
         private readonly float[] reinforcementEntryX = new float[TotalFistCount - OriginalFistCount];
         private readonly float[] fistFlashUntil = new float[TotalFistCount];
         private readonly bool[] fistBusy = new bool[TotalFistCount];
@@ -78,11 +81,14 @@ namespace BossTemplate
                 neutralRotation = appearance.transform.localRotation;
                 neutralScale = appearance.transform.localScale;
                 neutralSortingOrder = appearance.sortingOrder;
+                neutralMaskInteraction = appearance.maskInteraction;
                 neutralColor = appearance.color;
             }
+            groundMask = arena.CreateAboveGroundMask();
             for (int i = 0; i < OriginalFistCount; i++)
             {
                 SpriteRenderer fist = fists[i];
+                fistSortingOrders[i] = fist.sortingOrder;
                 fist.sprite = fistSprite ? fistSprite : body.sprite;
                 fist.transform.localScale = Vector3.one * (FistHeight / fist.sprite.bounds.size.y);
                 fist.sharedMaterial = appearance ? appearance.sharedMaterial : body.sharedMaterial;
@@ -100,6 +106,9 @@ namespace BossTemplate
             StopAllCoroutines(); body.color = baseColor; Intent = "전투 준비";
             Phase = 1;
             Transitioning = false;
+            DefeatedAt = null;
+            DefeatAnimationComplete = false;
+            groundMask.enabled = false;
             giantFollowVelocity = 0;
             hockeyHitstopUntil = 0;
             holdBothFists = false;
@@ -110,12 +119,15 @@ namespace BossTemplate
                 fistWindupUntil[i] = fistFlashUntil[i] = 0;
                 battleFists[i].enabled = false;
                 battleFists[i].transform.rotation = Quaternion.identity;
+                battleFists[i].sortingOrder = fistSortingOrders[i % OriginalFistCount];
+                battleFists[i].maskInteraction = SpriteMaskInteraction.None;
             }
             if (appearance)
             {
                 appearance.transform.SetLocalPositionAndRotation(neutralPosition, neutralRotation);
                 appearance.transform.localScale = neutralScale;
                 appearance.sortingOrder = neutralSortingOrder;
+                appearance.maskInteraction = neutralMaskInteraction;
                 appearance.color = neutralColor;
             }
             SetHidden(false);
@@ -164,7 +176,15 @@ namespace BossTemplate
                 appearance.sprite = sprite;
                 appearance.flipX = false;
                 // Keep the giant behind both layers of planted mines.
-                appearance.sortingOrder = ArenaProjectile.PlantedBodySortingOrder - 1;
+                int behindPlatforms = arena.BehindPlatformSortingOrder;
+                appearance.sortingOrder = Mathf.Min(ArenaProjectile.PlantedBodySortingOrder - 1, behindPlatforms);
+                groundMask.enabled = true;
+                appearance.maskInteraction = SpriteMaskInteraction.VisibleInsideMask;
+                for (int i = 0; i < OriginalFistCount; i++)
+                {
+                    fists[i].sortingOrder = behindPlatforms;
+                    fists[i].maskInteraction = SpriteMaskInteraction.VisibleInsideMask;
+                }
                 appearance.color = neutralColor * new Color(.8f, .86f, .94f, 1);
 
                 float scale = 15f / sprite.bounds.size.y;
@@ -204,6 +224,11 @@ namespace BossTemplate
             Phase = 2;
             Transitioning = false;
             Health.ResetHealth(PhaseTwoMaximum);
+            for (int i = 0; i < OriginalFistCount; i++)
+            {
+                fists[i].sortingOrder = fistSortingOrders[i];
+                fists[i].maskInteraction = SpriteMaskInteraction.None;
+            }
             Intent = "2페이즈 시작";
             if (!arena.Finished)
             {
@@ -298,6 +323,7 @@ namespace BossTemplate
             if (!Health || arena.Frozen) return;
             if (Phase == 2)
             {
+                if (Health.Dead && !arena.Player.Health.Dead) return;
                 if (!arena.Finished && Time.deltaTime > 0)
                 {
                     if (!enraged && Health.Current < Health.Maximum * EnrageHealthRatio) Enrage();

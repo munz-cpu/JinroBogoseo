@@ -37,6 +37,8 @@ namespace BossTemplate
         private Vector3 playerStart, bossStart;
         private float phaseOneHealth;
         private CinemachineBrain cameraBrain;
+        private CinemachineCamera defeatCamera;
+        private Transform previousCameraTarget;
         private readonly CinemachineImpulseDefinition impactImpulse = new CinemachineImpulseDefinition
         {
             ImpulseType = CinemachineImpulseDefinition.ImpulseTypes.Uniform,
@@ -50,6 +52,17 @@ namespace BossTemplate
         internal bool Frozen => Study && Study.Frozen;
         public bool Finished => (Study && !Study.InCombat) || CombatEnded;
         internal bool CombatEnded => Player.Health.Dead || (Boss.Phase == 2 && Boss.Health.Dead);
+        internal bool ResultsReady => Player.Health.Dead || Boss.DefeatAnimationComplete;
+        internal int BehindPlatformSortingOrder
+        {
+            get
+            {
+                int lowest = ground.Surface.sortingOrder;
+                foreach (var platform in platforms)
+                    if (platform) lowest = Mathf.Min(lowest, platform.Surface.sortingOrder);
+                return lowest - 1;
+            }
+        }
         internal float StudyBossHealthRemaining
         {
             get
@@ -164,6 +177,9 @@ namespace BossTemplate
         internal void ResetStudyFight()
         {
             ClearAttacks();
+            if (defeatCamera) defeatCamera.Follow = previousCameraTarget;
+            defeatCamera = null;
+            previousCameraTarget = null;
             if (healthOrb) healthOrb.gameObject.SetActive(false);
             Player.transform.position = playerStart; Boss.transform.position = bossStart;
             Player.Health.ResetHealth(Player.Health.Maximum);
@@ -178,9 +194,9 @@ namespace BossTemplate
             if (healthOrb) healthOrb.gameObject.SetActive(false);
         }
 
-        private void ClearAttacks()
+        private void ClearAttacks(bool stopAudio = true)
         {
-            if (effectsAudio) effectsAudio.Stop();
+            if (stopAudio && effectsAudio) effectsAudio.Stop();
             foreach (var item in projectiles) item.gameObject.SetActive(false);
             foreach (var item in effects) item.gameObject.SetActive(false);
         }
@@ -215,16 +231,43 @@ namespace BossTemplate
         {
             AdvancePhaseIfDefeated();
             var keyboard = Keyboard.current;
-            if (!Study && Finished && keyboard != null
+            if (!Study && ResultsReady && keyboard != null
                 && (keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame))
                 ResetFight();
         }
 
         private void AdvancePhaseIfDefeated()
         {
-            if (Frozen || Finished || Boss.Phase != 1 || Boss.Transitioning || !Boss.Health.Dead) return;
-            ClearAttacks();
-            Boss.BeginPhaseTwo();
+            if (Frozen || (Study && !Study.InCombat) || Player.Health.Dead || Boss.Transitioning
+                || !Boss.Health.Dead || Boss.DefeatedAt.HasValue) return;
+            ClearAttacks(stopAudio: Boss.Phase == 1);
+            if (Boss.Phase == 1) Boss.BeginPhaseTwo();
+            else
+            {
+                if (cameraBrain && cameraBrain.ActiveVirtualCamera is CinemachineCamera camera)
+                {
+                    defeatCamera = camera;
+                    previousCameraTarget = camera.Follow;
+                    camera.Follow = Boss.transform;
+                }
+                Boss.BeginDefeat();
+            }
+        }
+
+        internal SpriteMask CreateAboveGroundMask()
+        {
+            var mask = new GameObject("지면 위 렌더링 마스크").AddComponent<SpriteMask>();
+            mask.transform.SetParent(transform, false);
+            mask.sprite = ground.Surface.sprite;
+            const float height = 50f;
+            Bounds floor = GroundBounds;
+            Vector3 parentScale = transform.lossyScale;
+            Vector3 spriteSize = mask.sprite.bounds.size;
+            mask.transform.position = new Vector3(floor.center.x, GroundY + height * .5f, floor.center.z);
+            mask.transform.localScale = new Vector3((floor.size.x + 40) / (spriteSize.x * parentScale.x),
+                height / (spriteSize.y * parentScale.y), 1);
+            mask.enabled = false;
+            return mask;
         }
         public GameObject Flash(Vector2 position, Vector2 size, Color color, float lifetime)
         {
@@ -265,6 +308,36 @@ namespace BossTemplate
             if (playSound) PlayEffect(rockLandingSound);
             Burst(rockDustMesh, position, new Vector2(width, .55f), new Color(.79f, .68f, .53f, .8f),
                 .3f, Vector2.up * .65f, 2f);
+        }
+
+        internal void ShowGolemCollapse(Bounds giant)
+        {
+            var impact = new Vector2(giant.center.x, GroundY + .2f);
+            PlayEffect(rockExplosionSound);
+            ShakeImpact(impact, Vector2.down * .48f, allowOffscreen: true);
+
+            float spread = Mathf.Min(giant.extents.x, 5f);
+            for (int i = -1; i <= 1; i++)
+            {
+                Vector2 position = impact + new Vector2(i * spread * .74f, .22f);
+                Burst(rockDustMesh, position, new Vector2(3.4f, 1.3f), new Color(.67f, .63f, .57f, .78f),
+                    1.55f, new Vector2(i * 1.2f, 1.5f), 2.6f, i * 9);
+            }
+            Burst(rockDustMesh, impact + Vector2.up * 2.4f, new Vector2(4.2f, 2.2f), new Color(.53f, .50f, .47f, .74f),
+                1.26f, Vector2.up * 2.25f, 2.2f);
+
+            if (!rockSprite) return;
+            int chunk = 0;
+            foreach (var effect in effects)
+            {
+                if (effect.gameObject.activeSelf) continue;
+                float side = (chunk - 3.5f) / 3.5f;
+                var position = impact + new Vector2(side * spread * .8f, Random.Range(1.1f, 5.6f));
+                var launch = new Vector2(side * Random.Range(2.2f, 6.2f), Random.Range(3.2f, 8.4f));
+                effect.ShowDebris(rockSprite, position, Random.Range(.55f, 1.5f), new Color(.77f, .71f, .64f),
+                    Random.Range(1.3f, 1.85f), launch, side * Random.Range(120f, 310f), GroundY);
+                if (++chunk == 8) break;
+            }
         }
 
         internal Rect GetAirHockeyCourt(float paddleHalfWidth)

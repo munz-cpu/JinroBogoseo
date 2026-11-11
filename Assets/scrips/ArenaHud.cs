@@ -27,7 +27,7 @@ namespace BossTemplate
             }
             bool defeated = arena.Study?.Screen == StudyScreen.Defeat || !arena.ResearchActive && arena.Player.Health.Dead;
             result.text = defeated ? "Enter로 다시 도전"
-                : !arena.ResearchActive && arena.Finished ? "승리! Enter로 재도전" : "";
+                : !arena.ResearchActive && arena.ResultsReady ? "승리! Enter로 재도전" : "";
         }
 
         private static void UpdateHealthBar(Slider slider, FighterHealth health)

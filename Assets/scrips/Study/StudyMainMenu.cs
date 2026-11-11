@@ -47,15 +47,14 @@ namespace BossTemplate
             navigationSlide = new StudySlideIn((RectTransform)transform, navigation);
             detailsScale = details.localScale;
             detailsAnchor = details.anchorMin;
-            StudyTextHover.Attach(transform);
-            StudyTextHover.Attach(backToMenu.transform);
-
             play.onClick.AddListener(session.OpenIntro);
             settings.onClick.AddListener(() => OpenDetails("설정", "", true));
             stats.onClick.AddListener(() => OpenDetails("통계", Stats()));
             terms.onClick.AddListener(() => OpenDetails("실험 약관", Terms()));
             back.onClick.AddListener(CloseDetails);
             backToMenu.onClick.AddListener(session.BackToTitle);
+            foreach (var button in new[] { play, settings, stats, terms, back, backToMenu })
+                StudyTextHover.Attach(button);
             volume.onValueChanged.AddListener(value =>
             {
                 AudioListener.volume = value;

@@ -43,10 +43,6 @@ namespace BossTemplate
         {
             session = owner;
             if (mainMenu) mainMenu.Bind(owner);
-            StudyTextHover.Attach(consentContent);
-            StudyTextHover.Attach(waitingContent);
-            StudyTextHover.Attach(declinedContent);
-            StudyTextHover.Attach(debriefContent);
             if (victoryStar)
             {
                 var reviewFont = pauseDisplayFont ? pauseDisplayFont : font && !useSceneFonts ? font : readyTitle.font;
@@ -59,7 +55,6 @@ namespace BossTemplate
                 ratings = victoryPanel.Ratings;
                 skipRating = victoryPanel.Skip;
             }
-            StudyTextHover.Attach(surveyContent);
             foreach (var screen in screens)
                 if (screen) screen.SetActive(false);
             if (font && !useSceneFonts)
@@ -270,7 +265,9 @@ namespace BossTemplate
 
         private static void Listen(Button button, UnityAction callback)
         {
-            if (button) button.onClick.AddListener(callback);
+            if (!button) return;
+            button.onClick.AddListener(callback);
+            StudyTextHover.Attach(button);
         }
     }
 }

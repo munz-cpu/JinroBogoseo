@@ -61,7 +61,8 @@ namespace BossTemplate
             SetNavigation(menu, resume, volume);
             SetNavigation(volume, menu, resume);
             slide = new StudySlideIn(overlay, content);
-            StudyTextHover.Attach(content);
+            StudyTextHover.Attach(resume);
+            StudyTextHover.Attach(menu);
             overlay.gameObject.SetActive(false);
         }
 

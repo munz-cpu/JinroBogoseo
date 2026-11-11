@@ -212,9 +212,17 @@ internal static class BossStudyChecks
         study.Protocol.apiUrl = "http://127.0.0.1:1";
         arena.Player.Health.Hit(6, 0, true, BossPattern.dash);
         arena.Boss.Health.Hit(arena.Boss.Health.Current);
-        yield return Until(() => arena.Boss.Phase == 2 && !arena.Boss.Transitioning, "Natural phase transition");
         var hands = (SpriteRenderer[])typeof(ArenaBoss).GetField("battleFists", BindingFlags.Instance | BindingFlags.NonPublic)
             .GetValue(arena.Boss);
+        yield return Until(() => arena.Boss.Transitioning && hands[0].enabled, "Hands rise with the giant");
+        Check(hands[0].sortingOrder <= arena.BehindPlatformSortingOrder
+            && hands[1].sortingOrder <= arena.BehindPlatformSortingOrder
+            && hands[0].maskInteraction == SpriteMaskInteraction.VisibleInsideMask
+            && hands[1].maskInteraction == SpriteMaskInteraction.VisibleInsideMask,
+            "Rising hands are masked at the ground and render behind the platforms");
+        yield return Until(() => arena.Boss.Phase == 2 && !arena.Boss.Transitioning, "Natural phase transition");
+        Check(hands[0].maskInteraction == SpriteMaskInteraction.None && hands[1].maskInteraction == SpriteMaskInteraction.None,
+            "Combat hands restore their normal rendering");
         var bossHealth = arena.Boss.Health;
         arena.Player.Health.InvulnerableUntil = Time.time + 45;
         bossHealth.Hit(bossHealth.Maximum * .69f);
@@ -236,14 +244,21 @@ internal static class BossStudyChecks
         foreach (var attack in enrageAttacks)
             yield return Until(() => arena.Boss.Intent == attack.intent, $"Enrage attack {attack.pattern}");
         arena.SkipCurrentPhase();
+        Check(arena.CombatEnded && !arena.ResultsReady && study.Screen == StudyScreen.Combat,
+            "A lethal blow stops combat before displaying the result");
+        float combatDuration = study.InspectorElapsedSeconds;
         yield return Until(() => study.Screen == StudyScreen.Survey && SceneManager.GetActiveScene().path == StudySceneEntry.GamePath,
             "Clearing the boss opens the rating panel in the game scene");
         Check(arena && arena.Boss.Health.Dead && study.Frozen && Time.timeScale == 0,
             "Rating preserves the defeated boss and freezes gameplay");
+        Check(arena.Boss.Hidden && Array.TrueForAll(hands, hand => !hand.enabled),
+            "The giant and fists finish collapsing before the rating appears");
         study.TogglePause();
         Check(study.Frozen && !study.Paused, "Escape cannot replace the victory panel with the pause menu");
         saved = storage.Load();
         Check(saved.pending.Count == 1 && saved.recent[0].cleared && saved.recent[0].attempt_number == 1, "Durable attempt record");
+        Check(Mathf.Approximately(saved.recent[0].duration_seconds, combatDuration),
+            "Defeat animation time is excluded from the recorded combat duration");
         Check(saved.recent[0].pattern_stats[(int)BossPattern.dash].average_damage == 6, "Measured pattern damage");
         Check(saved.recent[0].damage_dealt > 0 && saved.recent[0].boss_hp_remaining == 0, "Both boss phases recorded");
         Check(saved.recent[0].boss_phase == 2 && saved.recent[0].phase_progress_percent == 100, "Cleared phase progress");

@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -13,6 +14,15 @@ namespace BossTemplate
 
     internal sealed class StudySession : MonoBehaviour
     {
+        private sealed class ArchiveUpload
+        {
+            internal readonly StudySave save;
+            internal float nextSend;
+            internal int failures;
+
+            internal ArchiveUpload(StudySave save) => this.save = save;
+        }
+
         internal static StudySession Current { get; private set; }
         internal static readonly BossPattern[] PhaseOne =
         {
@@ -29,6 +39,7 @@ namespace BossTemplate
         private StudySettings asset;
         private StudyStorage storage;
         private StudySave state;
+        private readonly List<ArchiveUpload> archiveUploads = new List<ArchiveUpload>();
         private StudyPanel panel;
         private float startTime, checkpointAt, nextSend;
         private float pausedAt, previousTimeScale;
@@ -47,7 +58,7 @@ namespace BossTemplate
         internal int Deaths => state.deaths;
         internal int Attempts => state.attempts;
         internal AttemptRecord LastAttempt => state.lastAttempt;
-        internal bool HasContinuation => state.participant != null && (!state.debrief || HasPending);
+        internal bool HasContinuation => state.participant != null && !state.debrief;
         private bool CanPause => !fatal && !changingScene && (Screen == StudyScreen.Ready
             || InCombat && !arena.CombatEnded);
         private float ElapsedSeconds => (Paused ? pausedAt : Time.realtimeSinceStartup) - startTime;
@@ -57,7 +68,7 @@ namespace BossTemplate
         // A save written before enrollment can deserialize with an empty protocol object.
         internal StudyProtocol Protocol => (state?.participant != null ? state.protocol : null) ?? asset.protocol;
         internal bool HasPending => state?.pending.Count > 0;
-        internal bool CanReplay => (Screen is StudyScreen.Debrief or StudyScreen.Title) && state.debrief && !changingScene && !HasPending;
+        internal bool CanReplay => (Screen is StudyScreen.Debrief or StudyScreen.Title) && state.debrief && !changingScene;
         internal string SyncStatus => syncStatus;
         internal string ParticipantId => state.participant?.participant_id ?? state.withdrawalParticipantId ?? "";
         internal float BossHealthFactor => state?.active?.difficulty.boss_health ?? 1;
@@ -99,6 +110,8 @@ namespace BossTemplate
             try
             {
                 state = storage.Load();
+                foreach (var archive in storage.LoadPendingArchives(state.participant?.participant_id))
+                    archiveUploads.Add(new ArchiveUpload(archive));
                 if (state.active != null)
                 {
                     // The last durable checkpoint marks the end of a process that could not shut down cleanly.
@@ -177,6 +190,11 @@ namespace BossTemplate
         internal void BeginAttempt()
         {
             if (Screen != StudyScreen.Ready || state.assignment == null || !arena || changingScene || Paused) return;
+            StartAttempt();
+        }
+
+        private void StartAttempt()
+        {
             string now = Now();
             int number = state.attempts + 1;
             var difficulty = AdaptiveDifficulty.Choose(Protocol, state.recent, number,
@@ -336,6 +354,7 @@ namespace BossTemplate
                     else arena.EndStudyFight();
                 }
                 if (nextScreen.HasValue) Show(nextScreen.Value);
+                else if (result == "defeat" && !quitting) StartAttempt();
                 else RestoreScreen();
             }
         }
@@ -386,9 +405,10 @@ namespace BossTemplate
         internal void StartNewStudy()
         {
             if (!CanReplay) return;
+            var completed = state;
             try
             {
-                storage.ArchiveCompleted(state);
+                storage.ArchiveCompleted(completed);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
             {
@@ -397,6 +417,7 @@ namespace BossTemplate
             }
             state = new StudySave();
             if (!Persist()) return;
+            if (completed.pending.Count > 0) archiveUploads.Add(new ArchiveUpload(completed));
             Retry();
             Show(StudyScreen.Consent);
         }
@@ -455,14 +476,26 @@ namespace BossTemplate
                 if (!Persist()) return;
                 checkpointAt = Time.realtimeSinceStartup + 5;
             }
-            if (!fatal && !sending && !permanentError && Time.realtimeSinceStartup >= nextSend &&
+            if (fatal || sending) return;
+            if (!permanentError && Time.realtimeSinceStartup >= nextSend &&
                 (state.withdrawalPending || state.participant != null && (state.assignment == null || state.pending.Count > 0)))
+            {
                 StartCoroutine(SendNext());
+                return;
+            }
+            float now = Time.realtimeSinceStartup;
+            foreach (var archive in archiveUploads)
+            {
+                if (now < archive.nextSend) continue;
+                StartCoroutine(SendArchived(archive));
+                break;
+            }
         }
 
         private IEnumerator SendNext()
         {
             sending = true;
+            var submittedState = state;
             bool registering = state.participant != null && state.assignment == null;
             bool withdrawing = state.withdrawalPending && !registering;
             PendingSubmission pending = withdrawing || registering ? null : state.pending[0];
@@ -470,13 +503,7 @@ namespace BossTemplate
             string json = registering ? JsonUtility.ToJson(state.participant) : withdrawing
                 ? JsonUtility.ToJson(new WithdrawalRecord { participant_id = state.withdrawalParticipantId }) : pending.json;
             string endpoint = withdrawing ? state.withdrawalApiUrl : Protocol.apiUrl;
-            using var request = new UnityWebRequest(endpoint.TrimEnd('/') + "/" + route, "POST");
-            request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json));
-            request.downloadHandler = new DownloadHandlerBuffer();
-            request.SetRequestHeader("Content-Type", "application/json");
-            request.SetRequestHeader("Authorization", "Bearer " + state.token);
-            request.timeout = 10;
-            request.redirectLimit = 0;
+            using var request = CreateRequest(endpoint, route, json, state.token);
             // Unity may throw synchronously if the project disallows HTTP.
             UnityWebRequestAsyncOperation operation = null;
             try { operation = request.SendWebRequest(); }
@@ -484,6 +511,13 @@ namespace BossTemplate
             if (operation != null)
             {
                 yield return operation;
+                // Replay can replace the current save while this request is in flight.
+                // The archive may resend it safely using the original participant and attempt IDs.
+                if (state != submittedState)
+                {
+                    sending = false;
+                    yield break;
+                }
                 if (!fatal && (request.result == UnityWebRequest.Result.Success
                     || registering && state.withdrawalPending && request.responseCode == 410))
                 {
@@ -523,6 +557,54 @@ namespace BossTemplate
                 }
             }
             sending = false;
+        }
+
+        private IEnumerator SendArchived(ArchiveUpload archive)
+        {
+            sending = true;
+            var save = archive.save;
+            var pending = save.pending[0];
+            using var request = CreateRequest(save.protocol.apiUrl, pending.route, pending.json, save.token);
+            UnityWebRequestAsyncOperation operation = null;
+            try { operation = request.SendWebRequest(); }
+            catch (InvalidOperationException) { }
+            if (operation != null) yield return operation;
+
+            if (operation != null && request.result == UnityWebRequest.Result.Success)
+            {
+                save.pending.RemoveAt(0);
+                try
+                {
+                    storage.ArchiveCompleted(save);
+                    if (save.pending.Count == 0) archiveUploads.Remove(archive);
+                    archive.failures = 0;
+                    archive.nextSend = 0;
+                    sending = false;
+                    yield break;
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
+                {
+                    save.pending.Insert(0, pending);
+                    Debug.LogWarning("Could not update an archived study (" + error.GetType().Name + ").");
+                }
+            }
+            archive.failures++;
+            long status = request.responseCode;
+            bool rejected = status >= 400 && status < 500 && status != 408 && status != 429;
+            archive.nextSend = Time.realtimeSinceStartup + (rejected ? 300 : Mathf.Min(60, Mathf.Pow(2, Mathf.Min(archive.failures, 6))));
+            sending = false;
+        }
+
+        private static UnityWebRequest CreateRequest(string endpoint, string route, string json, string token)
+        {
+            var request = new UnityWebRequest(endpoint.TrimEnd('/') + "/" + route, "POST");
+            request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json));
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
+            request.SetRequestHeader("Authorization", "Bearer " + token);
+            request.timeout = 10;
+            request.redirectLimit = 0;
+            return request;
         }
 
         private void RejectRequest(long code, bool permanent)

@@ -52,6 +52,32 @@ namespace BossTemplate
             Write(archive, state);
         }
 
+        internal IEnumerable<StudySave> LoadPendingArchives(string currentParticipantId)
+        {
+            string directory = Path.Combine(Path.GetDirectoryName(path), "completed-studies");
+            if (!Directory.Exists(directory)) yield break;
+            foreach (string archive in Directory.EnumerateFiles(directory, "*.json"))
+            {
+                StudySave saved = null;
+                try
+                {
+                    saved = JsonUtility.FromJson<StudySave>(File.ReadAllText(archive));
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
+                {
+                    Debug.LogWarning("Could not read an archived study (" + error.GetType().Name + ").");
+                }
+                if (saved?.schema == 1 && saved.debrief && saved.pending?.Count > 0
+                    && Guid.TryParse(saved.participant?.participant_id, out var id)
+                    && id.ToString("D") == Path.GetFileNameWithoutExtension(archive)
+                    && !string.Equals(id.ToString("D"), currentParticipantId, StringComparison.OrdinalIgnoreCase)
+                    && !string.IsNullOrEmpty(saved.token) && saved.protocol?.IsConfigured == true
+                    && saved.pending.TrueForAll(item => item != null && (item.route is "attempts" or "surveys")
+                        && !string.IsNullOrEmpty(item.json)))
+                    yield return saved;
+            }
+        }
+
         private static void Write(string path, StudySave state)
         {
             string temp = path + ".tmp";

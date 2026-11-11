@@ -23,8 +23,6 @@ namespace BossTemplate
         [SerializeField] private StudyRatingButton[] ratings;
         [SerializeField] private Button skipRating, withdraw, retry, replay;
         [SerializeField] private Text status;
-        [SerializeField] private Text debriefStatus;
-        [SerializeField] private Button debriefRetry;
         [SerializeField] private bool useSceneFonts;
 
         private StudySession session;
@@ -60,7 +58,6 @@ namespace BossTemplate
             Listen(skipRating, () => session.SubmitRating(null));
             Listen(withdraw, session.Withdraw);
             Listen(retry, session.Retry);
-            Listen(debriefRetry, session.Retry);
             Listen(replay, session.StartNewStudy);
 
             for (int i = 0; i < ratings.Length; i++)
@@ -199,24 +196,16 @@ namespace BossTemplate
         {
             if (session.Screen == StudyScreen.Title) mainMenu?.RefreshPlayLabel();
             if (replay) replay.interactable = session.CanReplay;
-            bool showNetwork = session.Screen is StudyScreen.Waiting or StudyScreen.Ready or StudyScreen.Survey or StudyScreen.Debrief
+            bool showNetwork = session.Screen == StudyScreen.Waiting
                 || (session.Screen == StudyScreen.Withdrawal && session.WithdrawalPending);
             string message = session.SyncStatus;
-            if (string.IsNullOrEmpty(message) && session.HasPending) message = "기록 전송 대기 중";
-            bool showStatus = showNetwork && message.Length > 0;
-            bool useDebriefStatus = session.Screen == StudyScreen.Debrief && debriefStatus;
-            RenderNetworkStatus(status, retry, message, showStatus && !useDebriefStatus);
-            RenderNetworkStatus(debriefStatus, debriefRetry, message, showStatus && useDebriefStatus);
-        }
-
-        private static void RenderNetworkStatus(Text label, Button action, string message, bool visible)
-        {
-            if (label)
+            bool visible = showNetwork && message.Length > 0;
+            if (status)
             {
-                label.text = message;
-                label.gameObject.SetActive(visible);
+                status.text = visible ? message : "";
+                status.gameObject.SetActive(visible);
             }
-            if (action) action.gameObject.SetActive(visible);
+            if (retry) retry.gameObject.SetActive(visible);
         }
 
         private static void Listen(Button button, UnityAction callback)

@@ -271,19 +271,21 @@ internal static class BossStudyChecks
         Check(reviewScenery.activeInHierarchy && !reviewBackdrop.activeSelf, "Debrief shows the battle backdrop");
         Check(((Text)reviewData.FindProperty("debrief").objectReferenceValue).text == study.Protocol.debrief,
             "Debrief preserves the full configured notice");
-        var retryStatus = (Text)reviewData.FindProperty("debriefStatus").objectReferenceValue;
-        var debriefRetry = (Button)reviewData.FindProperty("debriefRetry").objectReferenceValue;
-        yield return Until(() => study.SyncStatus.Length > 0 && retryStatus.isActiveAndEnabled && debriefRetry.isActiveAndEnabled,
-            "Review shows the failure and retry in the new layout");
-        Check(!((Text)reviewData.FindProperty("status").objectReferenceValue).gameObject.activeSelf,
-            "Review shows one network message");
-        study.Protocol.apiUrl = Endpoint;
-        debriefRetry.onClick.Invoke();
-        yield return Until(() => !study.HasPending && !retryStatus.gameObject.activeSelf, "Review retry syncs the rating");
+        yield return Until(() => study.HasPending && study.SyncStatus.Length > 0, "Rating remains queued after an offline submission");
+        var retryStatus = (Text)reviewData.FindProperty("status").objectReferenceValue;
+        var retryButton = (Button)reviewData.FindProperty("retry").objectReferenceValue;
+        Check(!retryStatus.gameObject.activeSelf && !retryButton.gameObject.activeSelf,
+            "Review hides the upload failure and retry button");
         var replay = Array.Find(review.GetComponentsInChildren<UnityEngine.UI.Button>(),
             button => button.name == "다시 하기");
-        Check(replay && replay.interactable, "Replay should be available after sync");
+        Check(replay && replay.interactable, "Replay is available while the rating is still pending");
+        study.Protocol.apiUrl = Endpoint;
         replay.onClick.Invoke();
+        var archived = new List<StudySave>(storage.LoadPendingArchives(null));
+        Check(archived.Count == 1 && archived[0].participant.participant_id == participant
+            && archived[0].pending[0].route == "surveys", "Pending rating survives replay and can be reloaded from disk");
+        Check(new List<StudySave>(storage.LoadPendingArchives(participant)).Count == 0,
+            "An archive matching the current participant must not send twice after an interrupted replay");
         yield return Until(() => study.Screen == StudyScreen.Consent && SceneManager.GetActiveScene().path == StudySceneEntry.IntroPath,
             "Replay should open consent for a new study");
         saved = storage.Load();
@@ -293,13 +295,20 @@ internal static class BossStudyChecks
         study.Enroll();
         yield return Until(() => study.Screen == StudyScreen.Ready && SceneManager.GetActiveScene().path == StudySceneEntry.GamePath,
             "Replay should register and start a new study");
+        yield return Until(() => new List<StudySave>(storage.LoadPendingArchives(null)).Count == 0,
+            "The old participant rating syncs from the archive in the background");
         Check(study.ParticipantId != participant, "Replay must have a fresh participant identity");
         arena = UnityEngine.Object.FindAnyObjectByType<BossArena>();
         study.BeginAttempt();
         arena.Player.Health.Hit(arena.Player.Health.Current);
-        yield return Until(() => study.Screen == StudyScreen.Ready && study.Deaths == 1, "Defeat increments the death count");
-        study.BeginAttempt();
-        Check(study.InCombat && !arena.CombatEnded, "Retry starts live combat");
+        yield return Until(() => study.InCombat && !arena.CombatEnded && study.Deaths == 1,
+            "Defeat increments the death count and restarts combat automatically");
+        saved = storage.Load();
+        Check(saved.lastAttempt.result == "defeat" && saved.lastAttempt.attempt_number == 1
+            && saved.active.attempt_number == 2 && saved.active.participant_id == saved.lastAttempt.participant_id,
+            "The defeat and next attempt are stored under the same participant");
+        Check(arena.Player.Health.Current == arena.Player.Health.Maximum && arena.Boss.Phase == 1,
+            "Automatic retry resets player health and returns to phase one");
         var gamePanel = UnityEngine.Object.FindAnyObjectByType<StudyPanel>();
         var keyboard = InputSystem.AddDevice<Keyboard>();
         void PressEscape()

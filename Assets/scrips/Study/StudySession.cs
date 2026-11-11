@@ -156,21 +156,32 @@ namespace BossTemplate
                 Show(StudyScreen.Title);
         }
 
-        internal void Enroll()
+        internal void Enroll() => Enroll(offline: false);
+        internal void EnrollOffline() => Enroll(offline: true);
+
+        private void Enroll(bool offline)
         {
-            if (Screen != StudyScreen.Consent || !Protocol.IsConfigured) return;
+            if (Screen != StudyScreen.Consent || changingScene || !Protocol.HasConsentDetails
+                || (!offline && !Protocol.HasValidEndpoint)) return;
             state.declined = false;
             state.protocol = JsonUtility.FromJson<StudyProtocol>(JsonUtility.ToJson(asset.protocol));
+            Guid participantId = Guid.NewGuid();
             state.participant = new ParticipantRecord
             {
-                participant_id = Guid.NewGuid().ToString("D"), age_group = "undisclosed", gaming_experience = "undisclosed",
+                participant_id = participantId.ToString("D"), age_group = "undisclosed", gaming_experience = "undisclosed",
                 consented = true, consented_at = Now(), consent_version = state.protocol.consentVersion.Trim(),
                 settings_version = state.protocol.settingsVersion.Trim()
             };
             var token = new byte[32];
             using (var rng = RandomNumberGenerator.Create()) rng.GetBytes(token);
             state.token = Convert.ToBase64String(token).TrimEnd('=').Replace('+', '-').Replace('/', '_');
-            if (Persist()) Show(StudyScreen.Waiting);
+            if (offline)
+            {
+                state.assignment = StudyAssignment.ForOfflineParticipant(participantId);
+                state.offlineRegistrationPending = true;
+                if (!state.protocol.HasValidEndpoint) state.protocol.apiUrl = null;
+            }
+            if (Persist()) Show(offline ? StudyScreen.Ready : StudyScreen.Waiting);
         }
 
         internal void Decline()
@@ -399,7 +410,7 @@ namespace BossTemplate
             state.recent.Clear();
             state.lastAttempt = null;
             // An unacknowledged registration must be replayed with the same token before it can be withdrawn.
-            if (state.assignment != null) ClearRegistration();
+            if (state.assignment != null && !state.offlineRegistrationPending) ClearRegistration();
             if (!Persist()) return;
             Retry();
             Show(StudyScreen.Withdrawal);
@@ -429,6 +440,7 @@ namespace BossTemplate
         {
             state.participant = null;
             state.assignment = null;
+            state.offlineRegistrationPending = false;
             state.protocol = null;
             state.attempts = 0;
             state.deaths = 0;
@@ -481,7 +493,8 @@ namespace BossTemplate
             }
             if (fatal || sending) return;
             if (!permanentError && Time.realtimeSinceStartup >= nextSend &&
-                (state.withdrawalPending || state.participant != null && (state.assignment == null || state.pending.Count > 0)))
+                (state.withdrawalPending || state.participant != null && (NeedsRegistration(state) || state.pending.Count > 0))
+                && CanSync(state))
             {
                 StartCoroutine(SendNext());
                 return;
@@ -489,20 +502,38 @@ namespace BossTemplate
             float now = Time.realtimeSinceStartup;
             foreach (var archive in archiveUploads)
             {
-                if (now < archive.nextSend) continue;
+                if (now < archive.nextSend || !CanSync(archive.save)) continue;
                 StartCoroutine(SendArchived(archive));
                 break;
             }
         }
 
+        private static bool NeedsRegistration(StudySave save) => save.participant != null
+            && (save.assignment == null || save.offlineRegistrationPending);
+
+        private bool CanSync(StudySave save) => !save.offlineRegistrationPending || save.protocol.HasValidEndpoint
+            || (string.IsNullOrEmpty(save.protocol.apiUrl) && asset.protocol.HasValidEndpoint);
+
+        private bool SetOfflineEndpoint(StudySave save)
+        {
+            if (!save.offlineRegistrationPending || !string.IsNullOrEmpty(save.protocol.apiUrl)) return false;
+            // Lock the first usable endpoint before sending so retries cannot register on another server.
+            save.protocol.apiUrl = asset.protocol.apiUrl;
+            if (save.withdrawalPending) save.withdrawalApiUrl = save.protocol.apiUrl;
+            return true;
+        }
+
         private IEnumerator SendNext()
         {
+            if (SetOfflineEndpoint(state) && !Persist()) yield break;
             sending = true;
             var submittedState = state;
-            bool registering = state.participant != null && state.assignment == null;
+            bool offline = state.offlineRegistrationPending;
+            bool registering = NeedsRegistration(state);
             bool withdrawing = state.withdrawalPending && !registering;
             PendingSubmission pending = withdrawing || registering ? null : state.pending[0];
-            string route = registering ? "participants" : withdrawing ? "withdraw" : pending.route;
+            string route = registering ? (offline ? "participants/offline" : "participants")
+                : withdrawing ? "withdraw" : pending.route;
             string json = registering ? JsonUtility.ToJson(state.participant) : withdrawing
                 ? JsonUtility.ToJson(new WithdrawalRecord { participant_id = state.withdrawalParticipantId }) : pending.json;
             string endpoint = withdrawing ? state.withdrawalApiUrl : Protocol.apiUrl;
@@ -526,17 +557,15 @@ namespace BossTemplate
                 {
                     if (registering && !state.withdrawalPending)
                     {
-                        StudyAssignment assigned = null;
-                        try { assigned = JsonUtility.FromJson<StudyAssignment>(request.downloadHandler.text); }
-                        catch (ArgumentException) { }
-                        if (assigned == null || assigned.target_attempts <= 0 || string.IsNullOrWhiteSpace(assigned.experiment_group)
-                            || string.IsNullOrWhiteSpace(assigned.assignment_version))
+                        StudyAssignment assigned = ReadAssignment(request);
+                        if (assigned == null || (offline && !state.assignment.Matches(assigned)))
                         {
                             RejectRequest(request.responseCode, true);
                             sending = false;
                             yield break;
                         }
                         state.assignment = assigned;
+                        state.offlineRegistrationPending = false;
                     }
                     else if (registering) ClearRegistration();
                     else if (withdrawing)
@@ -550,52 +579,88 @@ namespace BossTemplate
                     if (Persist())
                     {
                         Retry();
-                        if (withdrawing || registering && Screen != StudyScreen.Title) RestoreScreen();
+                        if (withdrawing || registering && !offline && Screen != StudyScreen.Title) RestoreScreen();
                     }
                 }
                 else if (!fatal && !(state.withdrawalPending && pending != null))
                 {
                     long status = request.responseCode;
-                    RejectRequest(status, status >= 400 && status < 500 && status != 408 && status != 429);
+                    RejectRequest(status, IsPermanentFailure(status) && !(offline && status == 404));
                 }
             }
             sending = false;
         }
 
+        private static StudyAssignment ReadAssignment(UnityWebRequest request)
+        {
+            try
+            {
+                var assignment = JsonUtility.FromJson<StudyAssignment>(request.downloadHandler.text);
+                if (assignment != null && assignment.target_attempts > 0
+                    && !string.IsNullOrWhiteSpace(assignment.experiment_group)
+                    && !string.IsNullOrWhiteSpace(assignment.assignment_version)) return assignment;
+            }
+            catch (ArgumentException) { }
+            return null;
+        }
+
+        private static bool IsPermanentFailure(long status) => status >= 400 && status < 500 && status != 408 && status != 429;
+
         private IEnumerator SendArchived(ArchiveUpload archive)
         {
             sending = true;
             var save = archive.save;
-            var pending = save.pending[0];
-            using var request = CreateRequest(save.protocol.apiUrl, pending.route, pending.json, save.token);
+            if (SetOfflineEndpoint(save) && !PersistArchive(save))
+            {
+                save.protocol.apiUrl = null;
+                archive.nextSend = Time.realtimeSinceStartup + 5;
+                sending = false;
+                yield break;
+            }
+            bool registering = save.offlineRegistrationPending;
+            var pending = registering ? null : save.pending[0];
+            using var request = CreateRequest(save.protocol.apiUrl, registering ? "participants/offline" : pending.route,
+                registering ? JsonUtility.ToJson(save.participant) : pending.json, save.token);
             UnityWebRequestAsyncOperation operation = null;
             try { operation = request.SendWebRequest(); }
             catch (InvalidOperationException) { }
             if (operation != null) yield return operation;
 
-            if (operation != null && request.result == UnityWebRequest.Result.Success)
+            if (operation != null && request.result == UnityWebRequest.Result.Success
+                && (!registering || save.assignment.Matches(ReadAssignment(request))))
             {
-                save.pending.RemoveAt(0);
-                try
+                if (registering) save.offlineRegistrationPending = false;
+                else save.pending.RemoveAt(0);
+                if (PersistArchive(save))
                 {
-                    storage.ArchiveCompleted(save);
                     if (save.pending.Count == 0) archiveUploads.Remove(archive);
                     archive.failures = 0;
                     archive.nextSend = 0;
                     sending = false;
                     yield break;
                 }
-                catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
-                {
-                    save.pending.Insert(0, pending);
-                    Debug.LogWarning("Could not update an archived study (" + error.GetType().Name + ").");
-                }
+                if (registering) save.offlineRegistrationPending = true;
+                else save.pending.Insert(0, pending);
             }
             archive.failures++;
             long status = request.responseCode;
-            bool rejected = status >= 400 && status < 500 && status != 408 && status != 429;
+            bool rejected = IsPermanentFailure(status) && !(registering && status == 404);
             archive.nextSend = Time.realtimeSinceStartup + (rejected ? 300 : Mathf.Min(60, Mathf.Pow(2, Mathf.Min(archive.failures, 6))));
             sending = false;
+        }
+
+        private bool PersistArchive(StudySave save)
+        {
+            try
+            {
+                storage.ArchiveCompleted(save);
+                return true;
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
+            {
+                Debug.LogWarning("Could not update an archived study (" + error.GetType().Name + ").");
+                return false;
+            }
         }
 
         private static UnityWebRequest CreateRequest(string endpoint, string route, string json, string token)

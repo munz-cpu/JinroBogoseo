@@ -10,6 +10,9 @@ namespace BossTemplate
         private const float HockeyWindupDuration = .26f;
         private const float HockeyHitstopDuration = .065f;
         private const float FourHandPairDelay = .62f;
+        private const float GiantBurrowDistance = 12f;
+        private const float GiantBurrowDepth = 11f;
+        private bool giantBurrowing;
         private static readonly BossPattern[] EnragePatterns =
         {
             BossPattern.fist_cross_slam, BossPattern.fist_slam_chain, BossPattern.fist_pincer_combo,
@@ -30,11 +33,8 @@ namespace BossTemplate
                 {
                     BossPattern pattern = arena.Study.Pick(StudySession.PhaseTwo, previous);
                     previous = pattern;
-                    arena.Study.Executed(pattern);
-                    if ((pattern is BossPattern.fist_jab or BossPattern.fist_uppercut or BossPattern.fist_backhand)
-                        && Random.value < arena.Study.SupportRainChance)
-                        SpawnFistSupportRain();
-                    yield return RunFistPattern(pattern);
+                    yield return RunNextFistPattern(pattern);
+                    if (arena.Finished) break;
                     yield return new WaitForSeconds(.45f * arena.Parameters(pattern).interval);
                 }
             }
@@ -56,9 +56,10 @@ namespace BossTemplate
 
                     foreach (var pattern in patterns)
                     {
-                        if (arena.Finished || enraged) break;
+                        if (arena.Finished) break;
                         previous = pattern;
-                        yield return RunFistPattern(pattern);
+                        yield return RunNextFistPattern(pattern);
+                        if (arena.Finished || enraged) break;
                         yield return new WaitForSeconds(.45f);
                     }
                 }
@@ -70,10 +71,89 @@ namespace BossTemplate
             while (!arena.Finished)
             {
                 BossPattern combo = EnragePatterns[nextCombo];
-                arena.Study?.Executed(combo);
-                yield return RunFistPattern(combo);
+                yield return RunNextFistPattern(combo);
+                if (arena.Finished) yield break;
                 yield return new WaitForSeconds(.38f * arena.Parameters(combo).interval);
                 nextCombo = (nextCombo + 1) % EnragePatterns.Length;
+            }
+        }
+
+        private IEnumerator RunNextFistPattern(BossPattern pattern)
+        {
+            if (Mathf.Abs(PlayerPosition.x - transform.position.x) >= GiantBurrowDistance
+                && appearance && (!arena.Study || arena.Study.Protocol.phaseTwoBurrow))
+            {
+                bool wasEnraged = enraged;
+                yield return BurrowTowardPlayer();
+                if (arena.Finished || enraged != wasEnraged) yield break;
+            }
+
+            if (arena.Study)
+            {
+                arena.Study.Executed(pattern);
+                if ((pattern is BossPattern.fist_jab or BossPattern.fist_uppercut or BossPattern.fist_backhand)
+                    && Random.value < arena.Study.SupportRainChance)
+                    SpawnFistSupportRain();
+            }
+            yield return RunFistPattern(pattern);
+        }
+
+        private IEnumerator BurrowTowardPlayer()
+        {
+            const float descentDuration = .45f;
+            const float ascentDuration = .65f;
+            Vector3 surface = transform.position;
+            int handCount = enraged ? TotalFistCount : OriginalFistCount;
+            giantBurrowing = true;
+            giantFollowVelocity = 0;
+            Intent = "골렘이 땅속으로 숨는다";
+            int behindPlatforms = arena.BehindPlatformSortingOrder;
+            for (int i = 0; i < handCount; i++) battleFists[i].sortingOrder = behindPlatforms;
+
+            for (float elapsed = 0; elapsed < descentDuration && !arena.Finished; elapsed += Time.deltaTime)
+            {
+                PositionBurrowingGiant(surface, Mathf.SmoothStep(0, GiantBurrowDepth, elapsed / descentDuration), handCount);
+                yield return null;
+            }
+            if (arena.Finished) yield break;
+
+            PositionBurrowingGiant(surface, GiantBurrowDepth, handCount);
+            SetHidden(true);
+            yield return new WaitForSeconds(.12f);
+            if (arena.Finished) yield break;
+
+            surface.x = GiantTargetX;
+            Intent = "골렘이 땅 위로 솟아오른다";
+            PositionBurrowingGiant(surface, GiantBurrowDepth, handCount);
+            SetHidden(false);
+            var emergence = new Vector2(surface.x, arena.GroundY);
+            arena.ShowRockLandingDust(emergence, 6, playSound: false);
+            arena.ShakeImpact(emergence, Vector2.down * .25f, allowOffscreen: true);
+            for (float elapsed = 0; elapsed < ascentDuration && !arena.Finished; elapsed += Time.deltaTime)
+            {
+                PositionBurrowingGiant(surface, Mathf.SmoothStep(GiantBurrowDepth, 0, elapsed / ascentDuration), handCount);
+                yield return null;
+            }
+            if (arena.Finished) yield break;
+
+            PositionBurrowingGiant(surface, 0, handCount);
+            for (int i = 0; i < handCount; i++) battleFists[i].sortingOrder = fistSortingOrders[i % OriginalFistCount];
+            giantBurrowing = false;
+            // LateUpdate can trigger enrage before the next pattern starts.
+            yield return null;
+        }
+
+        private void PositionBurrowingGiant(Vector3 surface, float depth, int handCount)
+        {
+            transform.position = surface + Vector3.down * depth;
+            for (int i = 0; i < handCount; i++)
+            {
+                SpriteRenderer fist = battleFists[i];
+                fist.transform.position = FistOrbitPosition(i) + Vector2.down * depth;
+                Color color = i < OriginalFistCount ? Color.white : FistReleaseColor;
+                color.a = Mathf.SmoothStep(0, 1, (fist.bounds.max.y - arena.GroundY) / .65f);
+                fist.color = color;
+                fist.enabled = color.a > 0;
             }
         }
 

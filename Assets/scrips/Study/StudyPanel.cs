@@ -31,6 +31,7 @@ namespace BossTemplate
         [SerializeField] private bool useSceneFonts;
 
         private StudySession session;
+        private Button enrollOffline;
         private GameObject activeScreen;
         private bool submittingRating;
         private StudyPauseMenu pauseMenu;
@@ -57,6 +58,16 @@ namespace BossTemplate
             }
             foreach (var screen in screens)
                 if (screen) screen.SetActive(false);
+            if (enroll)
+            {
+                enrollOffline = Instantiate(enroll, enroll.transform.parent);
+                enrollOffline.name = "동의하고 오프라인 시작";
+                enrollOffline.transform.SetSiblingIndex(enroll.transform.GetSiblingIndex() + 1);
+                enrollOffline.GetComponentInChildren<Text>(true).text = enrollOffline.name;
+                enroll.GetComponent<LayoutElement>().preferredWidth = 146;
+                enrollOffline.GetComponent<LayoutElement>().preferredWidth = 170;
+                Listen(enrollOffline, session.EnrollOffline);
+            }
             if (font && !useSceneFonts)
                 foreach (var text in GetComponentsInChildren<Text>(true)) text.font = font;
 
@@ -142,13 +153,14 @@ namespace BossTemplate
                 case StudyScreen.Consent:
                     var settings = session.Protocol;
                     consentNotice.text = settings.consentNotice;
-                    bool configured = settings.IsConfigured;
-                    consentDetails.text = configured
+                    bool canConsent = settings.HasConsentDetails;
+                    consentDetails.text = canConsent
                         ? $"보관 기간  {settings.retention}\n기록 제외를 원하면 참가자 ID와 함께 {settings.contact}에 문의하세요."
                         : Application.isEditor && (string.IsNullOrWhiteSpace(settings.retention) || string.IsNullOrWhiteSpace(settings.contact))
                             ? "BossStudySettings → Protocol에서 Retention(보관 기간)과 Contact(문의처)를 입력하세요."
                             : "아직 참여할 수 없습니다. 담당자에게 문의하세요.";
-                    enroll.interactable = configured;
+                    enroll.interactable = settings.IsConfigured;
+                    enrollOffline.interactable = canConsent;
                     break;
                 case StudyScreen.Ready:
                     readyTitle.text = "보스전 준비";

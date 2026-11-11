@@ -29,7 +29,7 @@ namespace BossTemplate
             Content.pivot = new Vector2(0, .5f);
             Title = LeftLabel(Content, "보스전 승리", font, 57, 109);
             Image(Content, "제목 강조선", new Vector2(-150, 66), new Vector2(56, 3), Accent);
-            LeftLabel(Content, "보스전에서 느낀 성취감", font, 20, 29);
+            LeftLabel(Content, "후기", font, 20, 29);
 
             var row = Rect(Content, "별점 선택", new Vector2(0, -30), new Vector2(Size.x, 62));
 

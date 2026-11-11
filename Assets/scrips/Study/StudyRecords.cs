@@ -23,6 +23,22 @@ namespace BossTemplate
         public string experiment_group, assignment_version;
         public int target_attempts;
         internal bool FixedHard => experiment_group == "D";
+
+        internal static StudyAssignment ForOfflineParticipant(Guid participantId)
+        {
+            // Match the server's offline-v1 allocation using the final byte of the random UUID.
+            int slot = participantId.ToByteArray()[15] % 4;
+            return new StudyAssignment
+            {
+                experiment_group = "ABCD"[slot].ToString(),
+                target_attempts = slot == 0 ? 3 : slot == 1 ? 7 : 12,
+                assignment_version = "offline-v1",
+            };
+        }
+
+        internal bool Matches(StudyAssignment other) => other != null
+            && experiment_group == other.experiment_group && target_attempts == other.target_attempts
+            && assignment_version == other.assignment_version;
     }
 
     [Serializable] internal sealed class PatternParameters
@@ -111,6 +127,7 @@ namespace BossTemplate
         public List<AttemptRecord> recent = new List<AttemptRecord>();
         public List<PendingSubmission> pending = new List<PendingSubmission>();
         public bool surveyDue, cleared, debrief, declined, withdrawalPending, withdrawn;
+        public bool offlineRegistrationPending;
         public string withdrawalParticipantId, withdrawalApiUrl;
     }
 }

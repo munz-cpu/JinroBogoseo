@@ -26,6 +26,8 @@ def create_app():
         if not groups or len({g.group for g in groups}) != len(groups):
             raise ValueError("RESEARCH_GROUPS requires unique group names")
         version = TypeAdapter(Label).validate_python(os.getenv("RESEARCH_ASSIGNMENT_VERSION", "assignment-v2"))
+        if version == Store.OFFLINE_ASSIGNMENT_VERSION:
+            raise ValueError("RESEARCH_ASSIGNMENT_VERSION is reserved for offline registration")
         app.state.store = Store(os.getenv("RESEARCH_DB", "study.sqlite3"), groups, version)
         app.state.store.initialize()
         app.state.admin_token = os.getenv("RESEARCH_ADMIN_TOKEN", "")
@@ -72,6 +74,10 @@ def create_app():
     @app.post("/participants", response_model=Assignment)
     def participants(payload: Participant, request: Request, token: Token):
         return request.app.state.store.register(payload, token)
+
+    @app.post("/participants/offline", response_model=Assignment)
+    def offline_participants(payload: Participant, request: Request, token: Token):
+        return request.app.state.store.register(payload, token, offline=True)
 
     @app.post("/attempts", status_code=204)
     def attempts(payload: Attempt, request: Request, token: Token):

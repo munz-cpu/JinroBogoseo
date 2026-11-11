@@ -15,6 +15,9 @@ class StoreError(Exception):
 
 
 class Store:
+    OFFLINE_ASSIGNMENT_VERSION = "offline-v1"
+    OFFLINE_GROUPS = (("A", 3), ("B", 7), ("C", 12), ("D", 12))
+
     def __init__(self, path, groups, assignment_version, rng=None):
         self.path = path
         self.groups = groups
@@ -54,10 +57,17 @@ class Store:
     def changed(db):
         db.execute("UPDATE mirror_state SET revision = revision + 1 WHERE id = 1")
 
-    def register(self, participant, token):
+    def register(self, participant, token, *, offline=False):
         fields = participant.model_dump(mode="json")
         pid = fields["participant_id"]
         token_hash = self.token_hash(token)
+        offline_assignment = None
+        if offline:
+            group, target = self.OFFLINE_GROUPS[participant.participant_id.int % len(self.OFFLINE_GROUPS)]
+            offline_assignment = {
+                "experiment_group": group, "target_attempts": target,
+                "assignment_version": self.OFFLINE_ASSIGNMENT_VERSION,
+            }
         with self.connection(write=True) as db:
             withdrawn = db.execute("SELECT token_hash FROM withdrawals WHERE participant_id=?", (pid,)).fetchone()
             if withdrawn:
@@ -68,14 +78,19 @@ class Store:
                 self.require_token(row, token_hash)
                 if any(fields[k] != row[k] for k in ("age_group", "gaming_experience", "settings_version", "consent_version")):
                     raise StoreError(409, "Registration payload changed")
-                return {k: row[k] for k in ("experiment_group", "target_attempts", "assignment_version")}
+                assignment = {k: row[k] for k in ("experiment_group", "target_attempts", "assignment_version")}
+                if offline and assignment != offline_assignment:
+                    raise StoreError(409, "Participant already has a different assignment")
+                return assignment
 
-            group = self.rng.choices(self.groups, weights=[g.weight for g in self.groups])[0]
-            assignment = {
-                "experiment_group": group.group,
-                "target_attempts": group.target_attempts,
-                "assignment_version": self.assignment_version,
-            }
+            assignment = offline_assignment
+            if assignment is None:
+                group = self.rng.choices(self.groups, weights=[g.weight for g in self.groups])[0]
+                assignment = {
+                    "experiment_group": group.group,
+                    "target_attempts": group.target_attempts,
+                    "assignment_version": self.assignment_version,
+                }
             db.execute(
                 """INSERT INTO participants VALUES (:participant_id, :token_hash, :age_group,
                 :gaming_experience, :experiment_group, :target_attempts, :consent_version,

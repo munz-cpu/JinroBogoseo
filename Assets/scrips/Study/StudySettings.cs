@@ -16,7 +16,7 @@ namespace BossTemplate
         private const string DebriefContactNotice = "기록 제외를 원하면 참가자 ID와 함께 아래 문의처로 연락해 주세요.";
         [Header("서버와 연구 버전")]
         public string apiUrl = "http://127.0.0.1:8000";
-        public string settingsVersion = "combat-v7";
+        public string settingsVersion = "combat-v8";
         public string consentVersion = "consent-v6";
         [Header("동의와 사후 안내")]
         [TextArea(4, 10)] public string consentNotice =
@@ -33,6 +33,8 @@ namespace BossTemplate
         internal string DebriefText => debrief?.Replace("기록을 보고서에서 빼려면 아래 버튼을 눌러 주세요.", DebriefContactNotice)
             .Replace("원하면 아래 버튼으로 연구 데이터 제외를 요청할 수 있어요.", DebriefContactNotice);
         [Header("연구 난이도와 전투 배수")]
+        [InspectorName("2페이즈 장거리 잠복 이동")]
+        public bool phaseTwoBurrow;
         [Range(0, 1)] public float minimumLevel = 0;
         [Range(0, 1)] public float maximumLevel = 1;
         [Tooltip("X는 낮은 난이도, Y는 높은 난이도의 보스 체력 배수입니다.")]
@@ -42,10 +44,12 @@ namespace BossTemplate
         [Tooltip("Pattern Id가 일치하는 공격에 개별 배수를 적용합니다. 예: fist_sweep")]
         public PatternRange[] patternOverrides = Array.Empty<PatternRange>();
 
-        internal bool IsConfigured =>
+        internal bool HasConsentDetails =>
             !string.IsNullOrWhiteSpace(retention) && !string.IsNullOrWhiteSpace(contact)
             && !string.IsNullOrWhiteSpace(consentNotice) && !string.IsNullOrWhiteSpace(debrief)
-            && ValidLabel(settingsVersion) && ValidLabel(consentVersion) && ValidEndpoint(apiUrl);
+            && ValidLabel(settingsVersion) && ValidLabel(consentVersion);
+        internal bool HasValidEndpoint => ValidEndpoint(apiUrl);
+        internal bool IsConfigured => HasConsentDetails && HasValidEndpoint;
 
         private static bool ValidLabel(string value) => !string.IsNullOrWhiteSpace(value) && value.Trim().Length <= 80;
 

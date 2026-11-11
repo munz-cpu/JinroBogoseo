@@ -113,6 +113,7 @@ namespace BossTemplate
             DefeatAnimationComplete = false;
             groundMask.enabled = false;
             giantFollowVelocity = 0;
+            giantBurrowing = false;
             hockeyHitstopUntil = 0;
             holdBothFists = false;
             enraged = false;
@@ -170,7 +171,7 @@ namespace BossTemplate
             yield return new WaitForSeconds(.3f);
 
             Intent = "플랫폼 뒤에서 거대한 골렘이 올라온다";
-            float giantX = Mathf.Clamp(PlayerPosition.x, arena.GroundBounds.min.x + 5, arena.GroundBounds.max.x - 5);
+            float giantX = GiantTargetX;
             transform.position = new Vector3(giantX, StandingY, start.z);
             fistRevealFloor = arena.GroundVisualBottom;
             if (appearance && (giantSprite || appearance.sprite))
@@ -329,6 +330,7 @@ namespace BossTemplate
             if (Phase == 2)
             {
                 if (Health.Dead && !arena.Player.Health.Dead) return;
+                if (giantBurrowing && !arena.Finished) return;
                 if (!arena.Finished && Time.deltaTime > 0)
                 {
                     if (!enraged && Health.Current < Health.Maximum * EnrageHealthRatio) Enrage();
@@ -447,6 +449,7 @@ namespace BossTemplate
         }
 
         private Vector2 PlayerPosition => arena.Player.transform.position;
+        private float GiantTargetX => Mathf.Clamp(PlayerPosition.x, arena.GroundBounds.min.x + 5, arena.GroundBounds.max.x - 5);
         private float StandingY => arena.GroundY + body.bounds.extents.y;
         internal float ProjectileHitRadius => body.bounds.extents.x * 1.35f;
         private float DirectionToPlayer => PlayerPosition.x < transform.position.x ? -1 : 1;

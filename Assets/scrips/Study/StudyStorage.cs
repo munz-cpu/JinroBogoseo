@@ -22,6 +22,8 @@ namespace BossTemplate
             if (string.IsNullOrEmpty(state.active?.attempt_id)) state.active = null;
             if (string.IsNullOrEmpty(state.lastAttempt?.attempt_id)) state.lastAttempt = null;
             if (state.assignment?.target_attempts is null or <= 0) state.assignment = null;
+            if (state.offlineRegistrationPending && !ValidOfflineRegistration(state))
+                throw new InvalidDataException("Invalid pending offline registration");
             if (state.participant != null && state.deaths == 0)
             {
                 // Older saves only retained recent attempts and records awaiting upload.
@@ -71,12 +73,17 @@ namespace BossTemplate
                     && Guid.TryParse(saved.participant?.participant_id, out var id)
                     && id.ToString("D") == Path.GetFileNameWithoutExtension(archive)
                     && !string.Equals(id.ToString("D"), currentParticipantId, StringComparison.OrdinalIgnoreCase)
-                    && !string.IsNullOrEmpty(saved.token) && saved.protocol?.IsConfigured == true
+                    && !string.IsNullOrEmpty(saved.token)
+                    && (saved.offlineRegistrationPending ? ValidOfflineRegistration(saved) : saved.protocol?.IsConfigured == true)
                     && saved.pending.TrueForAll(item => item != null && (item.route is "attempts" or "surveys")
                         && !string.IsNullOrEmpty(item.json)))
                     yield return saved;
             }
         }
+
+        private static bool ValidOfflineRegistration(StudySave save) => save.protocol?.HasConsentDetails == true
+            && !string.IsNullOrEmpty(save.token) && Guid.TryParse(save.participant?.participant_id, out var participantId)
+            && StudyAssignment.ForOfflineParticipant(participantId).Matches(save.assignment);
 
         private static void Write(string path, StudySave state)
         {

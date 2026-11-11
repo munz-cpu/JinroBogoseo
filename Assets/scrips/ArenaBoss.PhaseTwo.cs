@@ -9,6 +9,7 @@ namespace BossTemplate
         private const float HockeyStrikeReach = .5f;
         private const float HockeyWindupDuration = .26f;
         private const float HockeyHitstopDuration = .065f;
+        private const float FourHandPairDelay = .62f;
         private readonly float[] hockeyStrikeTimes = new float[2];
         private float hockeyHitstopUntil;
         internal bool HockeyHitstopActive => Time.time < hockeyHitstopUntil;
@@ -64,7 +65,7 @@ namespace BossTemplate
             {
                 arena.Study?.Executed(combo);
                 yield return RunFistPattern(combo);
-                yield return new WaitForSeconds(.24f * arena.Parameters(combo).interval);
+                yield return new WaitForSeconds(.38f * arena.Parameters(combo).interval);
                 combo = combo == BossPattern.fist_cross_slam ? BossPattern.fist_pincer_combo : BossPattern.fist_cross_slam;
             }
         }
@@ -471,10 +472,12 @@ namespace BossTemplate
             Vector2 target = PlayerPosition;
             Vector2 half = battleFists[0].bounds.extents;
             float outer = half.x * 2.3f + 1.8f;
-            float inner = battleFists[2].bounds.extents.x + .35f;
+            // Leave enough space to stand between the two inner strikes.
+            float inner = battleFists[2].bounds.extents.x * arena.Parameters(pattern).hitbox
+                + arena.Player.HurtboxHalfSize.x + .2f;
             float center = ClampPairedFistCenter(target.x, outer + half.x);
             var outside = StartCoroutine(SlamPair(0, center, outer, target.y));
-            yield return new WaitForSeconds(.48f * arena.Parameters(pattern).interval);
+            yield return new WaitForSeconds(FourHandPairDelay * arena.Parameters(pattern).interval);
             if (arena.Finished) yield break;
             yield return SlamPair(2, center, inner, target.y);
             yield return outside;
@@ -503,7 +506,7 @@ namespace BossTemplate
             float outer = half.x + 5.1f;
             float center = ClampPairedFistCenter(target.x, outer + half.x);
             var sweep = StartCoroutine(PincerPair(0, center, outer, arena.GroundY + half.y, 0));
-            yield return new WaitForSeconds(.48f * arena.Parameters(pattern).interval);
+            yield return new WaitForSeconds(FourHandPairDelay * arena.Parameters(pattern).interval);
             if (arena.Finished) yield break;
             yield return PincerPair(2, center, outer, Mathf.Max(arena.GroundY + 5.2f, target.y), 2.1f);
             yield return sweep;
@@ -528,7 +531,7 @@ namespace BossTemplate
             SpriteRenderer fist = battleFists[index];
             var parameters = arena.Parameters(pattern);
             bool combo = pattern is BossPattern.fist_cross_slam or BossPattern.fist_pincer_combo;
-            float lead = (combo ? .18f : .35f) + Mathf.Clamp(.58f * parameters.interval, .5f, .72f);
+            float lead = (combo ? .33f : .35f) + Mathf.Clamp(.58f * parameters.interval, .5f, .72f);
             Vector2 path = end - start;
             Vector2 direction = path.normalized;
             Vector2 size = fist.bounds.size * parameters.hitbox;

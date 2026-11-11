@@ -307,8 +307,10 @@ internal static class BossStudyChecks
         Check(saved.lastAttempt.result == "defeat" && saved.lastAttempt.attempt_number == 1 && saved.active == null,
             "Defeat is stored without starting the next attempt");
         var gamePanel = UnityEngine.Object.FindAnyObjectByType<StudyPanel>();
-        Check(Array.Exists(gamePanel.GetComponentsInChildren<Text>(), text => text.text == "Enter로 다시 도전"),
-            "Defeat shows the Enter prompt");
+        var hud = UnityEngine.Object.FindAnyObjectByType<ArenaHud>();
+        var resultLabel = (Text)new SerializedObject(hud).FindProperty("result").objectReferenceValue;
+        Check(resultLabel.isActiveAndEnabled && resultLabel.text == "Enter로 다시 도전" && !GameObject.Find("보스전 준비 화면"),
+            "Defeat shows only the Enter prompt over the arena");
         var keyboard = InputSystem.AddDevice<Keyboard>();
         void PressKey(Key key)
         {
@@ -326,6 +328,8 @@ internal static class BossStudyChecks
                 && saved.active.participant_id == saved.lastAttempt.participant_id
                 && arena.Player.Health.Current == arena.Player.Health.Maximum && arena.Boss.Phase == 1,
                 "Enter restarts phase one with full health and the same participant");
+            yield return null;
+            Check(resultLabel.text.Length == 0, "Retry clears the HUD prompt");
             PressKey(Key.Escape);
             Check(study.Paused && Time.timeScale == 0 && AudioListener.pause, "Escape pauses gameplay and sound");
             Check(Array.Exists(gamePanel.GetComponentsInChildren<Text>(), text => text.text == "죽은 횟수  1회"),

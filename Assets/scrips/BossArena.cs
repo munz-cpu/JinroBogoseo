@@ -138,6 +138,12 @@ namespace BossTemplate
             EndStudyFight();
         }
 
+        internal float ScreenEdgeX(bool right)
+        {
+            if (!arenaCamera) return right ? GroundBounds.max.x : GroundBounds.min.x;
+            return arenaCamera.ViewportToWorldPoint(new Vector3(right ? 1 : 0, .5f, arenaCamera.nearClipPlane)).x;
+        }
+
         internal void ShakeImpact(Vector2 position, Vector2 impulse, bool allowOffscreen = false)
         {
             if (shakeStrength <= 0 || !cameraBrain

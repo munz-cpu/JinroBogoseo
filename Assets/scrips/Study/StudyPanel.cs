@@ -106,7 +106,7 @@ namespace BossTemplate
             bool showDebriefScenery = debriefScenery && screen == StudyScreen.Debrief;
             if (debriefScenery) debriefScenery.SetActive(showDebriefScenery);
             if (studyBackdrop) studyBackdrop.SetActive(screen != StudyScreen.Title && !showDebriefScenery);
-            activeScreen = screens[(int)(screen == StudyScreen.Defeat ? StudyScreen.Ready : screen)];
+            activeScreen = screens[(int)(screen == StudyScreen.Defeat ? StudyScreen.Combat : screen)];
             if (!activeScreen)
             {
                 Debug.LogError($"Study screen {screen} has no scene reference.", this);
@@ -127,11 +127,8 @@ namespace BossTemplate
                     enroll.interactable = configured;
                     break;
                 case StudyScreen.Ready:
-                case StudyScreen.Defeat:
-                    bool defeated = screen == StudyScreen.Defeat;
-                    readyTitle.text = defeated ? "보스전 패배" : "보스전 준비";
-                    attemptLabel.text = defeated ? "Enter로 다시 도전" : "도전 시작";
-                    attempt.enabled = !defeated;
+                    readyTitle.text = "보스전 준비";
+                    attemptLabel.text = "도전 시작";
                     break;
                 case StudyScreen.Survey:
                     victoryPanel?.Fit();

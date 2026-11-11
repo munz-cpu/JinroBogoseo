@@ -51,6 +51,7 @@ namespace BossTemplate
         private float giantFollowVelocity;
         [SerializeField, InspectorName("골렘 주먹 렌더러")] private SpriteRenderer[] fists;
         private readonly SpriteRenderer[] battleFists = new SpriteRenderer[TotalFistCount];
+        private readonly float[] reinforcementEntryX = new float[TotalFistCount - OriginalFistCount];
         private readonly float[] fistFlashUntil = new float[TotalFistCount];
         private readonly bool[] fistBusy = new bool[TotalFistCount];
         private bool holdBothFists;
@@ -171,8 +172,10 @@ namespace BossTemplate
                 appearance.transform.localScale = new Vector3(scale / parentScale.x, scale / parentScale.y, 1);
                 Vector3 center = new Vector3(giantX, arena.GroundY + 1.1f, start.z);
                 Vector3 raised = appearance.transform.parent.InverseTransformPoint(center - sprite.bounds.center * scale);
-                Vector3 lowered = raised + appearance.transform.parent.InverseTransformVector(Vector3.down * 11);
+                const float riseHeight = 11f;
+                Vector3 lowered = raised + appearance.transform.parent.InverseTransformVector(Vector3.down * riseHeight);
                 appearance.transform.localPosition = lowered;
+                ShowOriginalFists(-riseHeight);
                 SetHidden(false);
                 const float riseDuration = 3f;
                 const float rumbleInterval = .2f;
@@ -181,7 +184,9 @@ namespace BossTemplate
                 for (float elapsed = 0; elapsed < riseDuration; elapsed += Time.deltaTime)
                 {
                     float progress = elapsed / riseDuration;
-                    appearance.transform.localPosition = Vector3.Lerp(lowered, raised, Mathf.SmoothStep(0, 1, progress));
+                    float rise = Mathf.SmoothStep(0, 1, progress);
+                    appearance.transform.localPosition = Vector3.Lerp(lowered, raised, rise);
+                    PositionRisingFists(Mathf.Lerp(-riseHeight, 0, rise));
                     if (elapsed >= nextRumble)
                     {
                         float strength = Mathf.Lerp(.35f, .09f, progress);
@@ -191,6 +196,7 @@ namespace BossTemplate
                     yield return null;
                 }
                 appearance.transform.localPosition = raised;
+                PositionRisingFists(0);
             }
             else SetHidden(false);
 
@@ -202,18 +208,29 @@ namespace BossTemplate
             if (!arena.Finished)
             {
                 fistOrbitStart = Time.time;
-                for (int i = 0; i < fists.Length; i++)
-                {
-                    fistFlashUntil[i] = 0;
-                    fists[i].transform.position = FistOrbitPosition(i);
-                    fists[i].flipX = i == 1;
-                    fists[i].enabled = true;
-                }
+                if (!fists[0].enabled) ShowOriginalFists(0);
                 StartCoroutine(FightWithFists());
             }
         }
 
-        private Vector2 FistOrbitPosition(int index)
+        private void ShowOriginalFists(float verticalOffset)
+        {
+            PositionRisingFists(verticalOffset);
+            for (int i = 0; i < OriginalFistCount; i++)
+            {
+                fists[i].flipX = i == 1;
+                fists[i].color = Color.white;
+                fists[i].enabled = true;
+            }
+        }
+
+        private void PositionRisingFists(float verticalOffset)
+        {
+            for (int i = 0; i < OriginalFistCount; i++)
+                fists[i].transform.position = FistOrbitPosition(i, atOrbitStart: true) + Vector2.up * verticalOffset;
+        }
+
+        private Vector2 FistOrbitPosition(int index, bool atOrbitStart = false)
         {
             bool reinforcement = index >= OriginalFistCount;
             float sideOffset = reinforcement ? 5.5f : 9f;
@@ -225,7 +242,8 @@ namespace BossTemplate
             float centerX = Mathf.Clamp(transform.position.x, bounds.min.x + clearance, bounds.max.x - clearance);
             centerX += index % 2 == 0 ? -sideOffset : sideOffset;
             float centerY = arena.GroundY + FistHeight * .5f + .35f + verticalRadius + (reinforcement ? 3.1f : 0);
-            float angle = (Time.time - fistOrbitStart) * (2 * Mathf.PI / orbitPeriod) + (1 - index) * Mathf.PI
+            float elapsed = atOrbitStart ? 0 : Time.time - fistOrbitStart;
+            float angle = elapsed * (2 * Mathf.PI / orbitPeriod) + (1 - index) * Mathf.PI
                 + (reinforcement ? Mathf.PI * .5f : 0);
             return new Vector2(centerX + Mathf.Cos(angle) * horizontalRadius, centerY + Mathf.Sin(angle) * verticalRadius);
         }
@@ -296,10 +314,19 @@ namespace BossTemplate
                     if (!fistBusy[i] && (!holdBothFists || reinforcement))
                     {
                         Vector2 orbit = FistOrbitPosition(i);
-                        fist.transform.position = reinforcement
-                            ? Vector2.Lerp(new Vector2(transform.position.x, arena.GroundY + 1), orbit,
-                                Mathf.SmoothStep(0, 1, (Time.time - enragedAt) / EnrageRevealDuration))
-                            : orbit;
+                        float revealProgress = (Time.time - enragedAt) / EnrageRevealDuration;
+                        if (reinforcement && revealProgress < 1)
+                        {
+                            float leftEdge = arena.ScreenEdgeX(right: false);
+                            float rightEdge = arena.ScreenEdgeX(right: true);
+                            float inset = Mathf.Min(fist.bounds.extents.x, (rightEdge - leftEdge) * .5f);
+                            float visibleX = Mathf.Clamp(orbit.x, leftEdge + inset, rightEdge - inset);
+                            float settle = Mathf.SmoothStep(0, 1, (revealProgress - .65f) / .35f);
+                            float entry = Mathf.SmoothStep(0, 1, revealProgress);
+                            orbit.x = Mathf.Lerp(reinforcementEntryX[i - OriginalFistCount],
+                                Mathf.Lerp(visibleX, orbit.x, settle), entry);
+                        }
+                        fist.transform.position = orbit;
                     }
                     float windupRemaining = fistWindupUntil[i] - Time.time;
                     Color color = windupRemaining > 0
@@ -336,12 +363,20 @@ namespace BossTemplate
             if (appearance) appearance.color *= new Color(1, .68f, .51f);
             for (int i = OriginalFistCount; i < battleFists.Length; i++)
             {
-                battleFists[i].flipX = i % 2 != 0;
-                battleFists[i].enabled = true;
+                SpriteRenderer fist = battleFists[i];
+                bool right = i % 2 != 0;
+                fist.flipX = right;
+                Bounds bounds = fist.bounds;
+                float innerEdge = right ? bounds.min.x : bounds.max.x;
+                Vector2 start = FistOrbitPosition(i);
+                start.x = arena.ScreenEdgeX(right) + (fist.transform.position.x - innerEdge) + (right ? .5f : -.5f);
+                reinforcementEntryX[i - OriginalFistCount] = start.x;
+                fist.transform.position = start;
+                fist.enabled = true;
             }
             var impact = new Vector2(transform.position.x, arena.GroundY);
             arena.ShowRockLandingDust(impact, 6, playSound: false);
-            arena.ShakeImpact(impact, Vector2.down * .35f);
+            arena.ShakeImpact(impact, Vector2.down * .45f, allowOffscreen: true);
             arena.PlayEffect(fistSlamSound);
         }
 

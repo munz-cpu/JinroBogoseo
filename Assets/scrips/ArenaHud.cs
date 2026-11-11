@@ -25,9 +25,9 @@ namespace BossTemplate
                 displayedRounds = rounds;
                 displayedCapacity = capacity;
             }
-            result.text = !arena.ResearchActive && arena.Finished
-                ? (arena.Player.Health.Dead ? "패배! Enter로 재도전" : "승리! Enter로 재도전")
-                : "";
+            bool defeated = arena.Study?.Screen == StudyScreen.Defeat || !arena.ResearchActive && arena.Player.Health.Dead;
+            result.text = defeated ? "Enter로 다시 도전"
+                : !arena.ResearchActive && arena.Finished ? "승리! Enter로 재도전" : "";
         }
 
         private static void UpdateHealthBar(Slider slider, FighterHealth health)

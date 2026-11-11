@@ -122,14 +122,19 @@ internal static class BossStudyChecks
                 InputUpdateType.Dynamic);
             yield return new WaitForSecondsRealtime(.2f);
             float worldPerUi = Camera.main.orthographicSize * 2 / menuBounds.height;
-            Check(sky.localPosition.x > 0 && golem.anchoredPosition.x * worldPerUi > sky.localPosition.x * 4,
-                "Mouse parallax moves the foreground farther than the sky");
+            Check(sky.localPosition.x < 0 && golem.anchoredPosition.x * worldPerUi < sky.localPosition.x * 4,
+                "Rightward mouse motion moves the scenery left, with stronger foreground parallax");
             InputState.Change(mouse, new MouseState { position = new Vector2(Screen.width * .95f, Screen.height * .12f) },
                 InputUpdateType.Dynamic);
             yield return new WaitForSecondsRealtime(.2f);
             Check(Mathf.Approximately(sky.localPosition.y, initialSkyY)
                 && Mathf.Approximately(golem.anchoredPosition.y, initialGolemY),
                 "Vertical mouse motion does not move the scenery or golem");
+            InputState.Change(mouse, new MouseState { position = new Vector2(Screen.width * .05f, Screen.height * .12f) },
+                InputUpdateType.Dynamic);
+            yield return new WaitForSecondsRealtime(.2f);
+            Check(sky.localPosition.x > 0 && golem.anchoredPosition.x * worldPerUi > sky.localPosition.x * 4,
+                "Leftward mouse motion moves the scenery right, with stronger foreground parallax");
         }
         finally
         {

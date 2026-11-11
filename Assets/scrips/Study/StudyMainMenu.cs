@@ -82,7 +82,7 @@ namespace BossTemplate
             var screen = ((RectTransform)transform).rect;
             if (screen.width <= 0 || screen.height <= 0) return;
             var mouse = Mouse.current;
-            float targetX = mouse == null ? 0 : Mathf.Clamp(mouse.position.ReadValue().x / Mathf.Max(1, Screen.width) * 2 - 1, -1, 1);
+            float targetX = mouse == null ? 0 : Mathf.Clamp(1 - mouse.position.ReadValue().x / Mathf.Max(1, Screen.width) * 2, -1, 1);
             pointerX = Mathf.Lerp(pointerX, targetX, 1 - Mathf.Exp(-8 * Time.unscaledDeltaTime));
             if (viewport != screen.size)
             {

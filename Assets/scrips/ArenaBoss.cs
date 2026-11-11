@@ -35,6 +35,7 @@ namespace BossTemplate
         private const int TotalFistCount = 4;
         private const float EnrageHealthRatio = .30f;
         private const float EnrageRevealDuration = .55f;
+        internal const int GiantSortingOrder = ArenaProjectile.PlantedBodySortingOrder - 1;
         private bool pauseRain;
         internal bool Hidden { get; private set; }
         private BossArena arena;
@@ -177,7 +178,7 @@ namespace BossTemplate
                 appearance.flipX = false;
                 // Keep the giant behind both layers of planted mines.
                 int behindPlatforms = arena.BehindPlatformSortingOrder;
-                appearance.sortingOrder = Mathf.Min(ArenaProjectile.PlantedBodySortingOrder - 1, behindPlatforms);
+                appearance.sortingOrder = Mathf.Min(GiantSortingOrder, behindPlatforms);
                 groundMask.enabled = true;
                 appearance.maskInteraction = SpriteMaskInteraction.VisibleInsideMask;
                 for (int i = 0; i < OriginalFistCount; i++)

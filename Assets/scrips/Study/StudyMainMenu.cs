@@ -19,8 +19,9 @@ namespace BossTemplate
         [SerializeField] private GameObject scenery, sceneryShade;
         [SerializeField] private SpriteRenderer sky;
         [SerializeField] private ParallaxLayer[] sceneryLayers;
-        [SerializeField] private RectTransform golemLayer, navigation, details;
-        [SerializeField] private float golemTravel = 60;
+        [SerializeField] private SpriteRenderer golemLayer;
+        [SerializeField] private RectTransform navigation, details;
+        [SerializeField] private float golemTravel = 12;
         [SerializeField] private Button play, settings, stats, terms, back, backToMenu;
         [SerializeField] private Text playLabel, heading, body, volumeLabel;
         [SerializeField] private ScrollRect scroll;
@@ -28,8 +29,8 @@ namespace BossTemplate
 
         private StudySession session;
         private Vector3[] layerOrigins;
-        private Vector3 sceneryScale, golemScale, navigationScale, detailsScale;
-        private Vector2 golemOrigin, detailsAnchor, viewport;
+        private Vector3 sceneryScale, navigationScale, detailsScale, golemOrigin;
+        private Vector2 detailsAnchor, viewport;
         private float skyWidth, pointerX, travelScale;
         private StudySlideIn navigationSlide;
         private bool showingSettings;
@@ -41,8 +42,7 @@ namespace BossTemplate
             layerOrigins = Array.ConvertAll(sceneryLayers, layer => layer.target.localPosition);
             skyWidth = sky.sprite.bounds.size.x * sky.transform.localScale.x;
             sceneryScale = scenery.transform.localScale;
-            golemOrigin = golemLayer.anchoredPosition;
-            golemScale = golemLayer.localScale;
+            golemLayer.sortingOrder = ArenaBoss.GiantSortingOrder;
             navigationScale = navigation.localScale;
             navigationSlide = new StudySlideIn((RectTransform)transform, navigation);
             detailsScale = details.localScale;
@@ -95,13 +95,19 @@ namespace BossTemplate
             var mouse = Mouse.current;
             float targetX = mouse == null ? 0 : Mathf.Clamp(1 - mouse.position.ReadValue().x / Mathf.Max(1, Screen.width) * 2, -1, 1);
             pointerX = Mathf.Lerp(pointerX, targetX, 1 - Mathf.Exp(-8 * Time.unscaledDeltaTime));
+            float worldPerUi = menuCamera.orthographicSize * 2 / screen.height;
             if (viewport != screen.size)
             {
                 viewport = screen.size;
                 travelScale = Mathf.Min(1, Mathf.Min(screen.height / 660, screen.width / 1050));
                 float figureScale = Mathf.Min(screen.height / 720, screen.width / 1195);
-                golemLayer.localScale = golemScale * figureScale;
-                float viewWidth = menuCamera.orthographicSize * 2 * screen.width / screen.height;
+                Bounds sprite = golemLayer.sprite.bounds;
+                float scale = 562 * figureScale * worldPerUi / Mathf.Max(sprite.size.x, sprite.size.y);
+                golemLayer.transform.localScale = Vector3.one * scale;
+                float depth = Vector3.Dot(golemLayer.transform.position - menuCamera.transform.position,
+                    menuCamera.transform.forward);
+                golemOrigin = menuCamera.ViewportToWorldPoint(new Vector3(.755f, .51f, depth)) - sprite.center * scale;
+                float viewWidth = worldPerUi * screen.width;
                 float widthScale = Mathf.Max(1, (viewWidth + 1.5f) / (skyWidth * sceneryScale.x));
                 scenery.transform.localScale = new Vector3(sceneryScale.x * widthScale, sceneryScale.y, sceneryScale.z);
                 navigation.localScale = navigationScale * travelScale;
@@ -109,10 +115,10 @@ namespace BossTemplate
                 details.localScale = detailsScale * detailScale;
                 details.anchorMin = details.anchorMax = new Vector2(Mathf.Max(detailsAnchor.x, 272 * detailScale / screen.width), detailsAnchor.y);
             }
-            float worldOffset = pointerX * menuCamera.orthographicSize * 2 / screen.height * travelScale;
+            float worldOffset = pointerX * worldPerUi * travelScale;
             for (int i = 0; i < sceneryLayers.Length; i++)
                 sceneryLayers[i].target.localPosition = layerOrigins[i] + Vector3.right * (worldOffset * sceneryLayers[i].distance);
-            golemLayer.anchoredPosition = golemOrigin + Vector2.right * (pointerX * golemTravel * travelScale);
+            golemLayer.transform.position = golemOrigin + Vector3.right * (worldOffset * golemTravel);
             navigationSlide.Advance();
         }
 

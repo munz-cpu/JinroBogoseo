@@ -5,18 +5,21 @@ namespace BossTemplate
 {
     internal sealed class StudySlideIn
     {
+        internal const float FastPlayback = 1.45f;
         private const float Duration = .48f;
         private const float Stagger = .085f;
         private const float DurationPerRow = .07f;
         private readonly RectTransform viewport, group;
         private readonly (RectTransform rect, Vector2 origin)[] items;
-        private readonly float rightEdge, endTime;
+        private readonly float rightEdge, endTime, playbackSpeed;
         private float elapsed = float.PositiveInfinity;
 
-        internal StudySlideIn(RectTransform viewport, RectTransform group, RectTransform trailingItem = null)
+        internal StudySlideIn(RectTransform viewport, RectTransform group, RectTransform trailingItem = null,
+            float playbackSpeed = 1f)
         {
             this.viewport = viewport;
             this.group = group;
+            this.playbackSpeed = playbackSpeed;
             int childCount = group.childCount;
             items = new (RectTransform, Vector2)[childCount + (trailingItem ? 1 : 0)];
             for (int i = 0; i < childCount; i++)
@@ -58,7 +61,7 @@ namespace BossTemplate
                 Vector2 offset = item.parent.InverseTransformVector(travel);
                 item.anchoredPosition = origin + offset * (remaining * remaining * remaining);
             }
-            elapsed = Mathf.Min(endTime, elapsed + Time.unscaledDeltaTime);
+            elapsed = Mathf.Min(endTime, elapsed + Time.unscaledDeltaTime * playbackSpeed);
         }
 
         internal void Finish()

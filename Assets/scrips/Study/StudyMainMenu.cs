@@ -8,6 +8,8 @@ namespace BossTemplate
 {
     internal sealed class StudyMainMenu : MonoBehaviour
     {
+        private const float DetailsEntranceDuration = .28f;
+
         [Serializable]
         private struct ParallaxLayer
         {
@@ -30,9 +32,11 @@ namespace BossTemplate
         private StudySession session;
         private Vector3[] layerOrigins;
         private Vector3 sceneryScale, navigationScale, detailsScale, golemOrigin;
-        private Vector2 detailsAnchor, viewport;
+        private Vector2 detailsAnchor, detailsPosition, viewport;
         private float skyWidth, pointerX, travelScale;
         private StudySlideIn navigationSlide;
+        private CanvasGroup detailsGroup;
+        private float detailsOpenedAt = float.NegativeInfinity;
         private bool showingSettings;
         private GameObject previousSelection;
 
@@ -47,6 +51,8 @@ namespace BossTemplate
             navigationSlide = new StudySlideIn((RectTransform)transform, navigation);
             detailsScale = details.localScale;
             detailsAnchor = details.anchorMin;
+            detailsPosition = details.anchoredPosition;
+            detailsGroup = details.gameObject.AddComponent<CanvasGroup>();
             play.onClick.AddListener(session.OpenIntro);
             settings.onClick.AddListener(() => OpenDetails("설정", "", true));
             stats.onClick.AddListener(() => OpenDetails("통계", Stats()));
@@ -120,6 +126,7 @@ namespace BossTemplate
                 sceneryLayers[i].target.localPosition = layerOrigins[i] + Vector3.right * (worldOffset * sceneryLayers[i].distance);
             golemLayer.transform.position = golemOrigin + Vector3.right * (worldOffset * golemTravel);
             navigationSlide.Advance();
+            AdvanceDetailsEntrance();
         }
 
         internal void CloseDetails()
@@ -127,6 +134,8 @@ namespace BossTemplate
             if (!details.gameObject.activeSelf) return;
             if (showingSettings) StudyPauseMenu.SaveVolume(volume.value);
             details.gameObject.SetActive(false);
+            detailsOpenedAt = float.NegativeInfinity;
+            SetDetailsEntrance(1);
             navigation.gameObject.SetActive(true);
             if (EventSystem.current)
                 EventSystem.current.SetSelectedGameObject(previousSelection ? previousSelection : play.gameObject);
@@ -147,6 +156,8 @@ namespace BossTemplate
             scroll.gameObject.SetActive(!settings);
             volume.gameObject.SetActive(settings);
             volumeLabel.gameObject.SetActive(settings);
+            detailsOpenedAt = Time.unscaledTime;
+            SetDetailsEntrance(0);
             details.gameObject.SetActive(true);
             if (settings)
             {
@@ -161,6 +172,21 @@ namespace BossTemplate
                 scroll.verticalNormalizedPosition = 1;
             }
             if (EventSystem.current) EventSystem.current.SetSelectedGameObject(back.gameObject);
+        }
+
+        private void AdvanceDetailsEntrance()
+        {
+            if (!details.gameObject.activeSelf || float.IsNegativeInfinity(detailsOpenedAt)) return;
+            float progress = Mathf.Clamp01((Time.unscaledTime - detailsOpenedAt) / DetailsEntranceDuration);
+            SetDetailsEntrance(Mathf.SmoothStep(0, 1, progress));
+            if (progress >= 1) detailsOpenedAt = float.NegativeInfinity;
+        }
+
+        private void SetDetailsEntrance(float amount)
+        {
+            details.anchoredPosition = detailsPosition + Vector2.down * (36 * (1 - amount));
+            detailsGroup.alpha = amount;
+            detailsGroup.blocksRaycasts = amount >= .55f;
         }
 
         private void UpdateVolumeLabel(float value) => volumeLabel.text = $"전체 음량   {Mathf.RoundToInt(value * 100)}%";

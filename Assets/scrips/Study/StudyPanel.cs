@@ -190,7 +190,8 @@ namespace BossTemplate
             };
             if (slideContent)
             {
-                screenSlide = new StudySlideIn((RectTransform)transform, slideContent, back);
+                float playbackSpeed = screen is StudyScreen.Survey or StudyScreen.Debrief ? StudySlideIn.FastPlayback : 1f;
+                screenSlide = new StudySlideIn((RectTransform)transform, slideContent, back, playbackSpeed);
                 screenSlide.Restart();
                 screenSlide.Advance();
             }

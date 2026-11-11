@@ -2995,7 +2995,6 @@ MonoBehaviour:
   victoryStar: {fileID: 0}
   ratings: []
   skipRating: {fileID: 0}
-  withdraw: {fileID: 0}
   retry: {fileID: 183817234}
   replay: {fileID: 0}
   status: {fileID: 1308577433}

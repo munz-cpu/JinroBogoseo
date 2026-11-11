@@ -16,6 +16,17 @@ namespace BossTemplate
         [SerializeField, InspectorName("착지 가능한 발판 목록 (바닥 포함)")] private ArenaPlatform[] platforms;
         public float GroundY => ground.Bounds.max.y;
         public Bounds GroundBounds => ground.Bounds;
+        internal float GroundVisualBottom
+        {
+            get
+            {
+                float bottom = GroundY;
+                foreach (var renderer in ground.GetComponentsInChildren<SpriteRenderer>())
+                    if (renderer.enabled && renderer.color.a > 0)
+                        bottom = Mathf.Min(bottom, renderer.bounds.min.y);
+                return bottom;
+            }
+        }
         [SerializeField, InspectorName("플레이어")] private SideViewPlayer player;
         [SerializeField, InspectorName("보스")] private ArenaBoss boss;
         [SerializeField, InspectorName("경기장 카메라")] private Camera arenaCamera;

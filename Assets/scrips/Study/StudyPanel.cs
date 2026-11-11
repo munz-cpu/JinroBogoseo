@@ -26,7 +26,7 @@ namespace BossTemplate
         [SerializeField] private Sprite victoryStar;
         [SerializeField] private Texture victoryShade;
         [SerializeField] private StudyRatingButton[] ratings;
-        [SerializeField] private Button skipRating, withdraw, retry, replay;
+        [SerializeField] private Button skipRating, retry, replay;
         [SerializeField] private Text status;
         [SerializeField] private bool useSceneFonts;
 
@@ -67,7 +67,6 @@ namespace BossTemplate
             Listen(cancelRegistration, session.Withdraw);
             Listen(attempt, session.BeginAttempt);
             Listen(skipRating, () => session.SubmitRating(null));
-            Listen(withdraw, session.Withdraw);
             Listen(retry, session.Retry);
             Listen(replay, session.StartNewStudy);
             Listen(copyContact, CopyContact);
@@ -145,7 +144,7 @@ namespace BossTemplate
                     consentNotice.text = settings.consentNotice;
                     bool configured = settings.IsConfigured;
                     consentDetails.text = configured
-                        ? $"보관 기간  {settings.retention}\n기록 삭제는 종료 화면에서 요청하거나, 참가자 ID와 함께 {settings.contact}에 문의하세요."
+                        ? $"보관 기간  {settings.retention}\n기록 제외를 원하면 참가자 ID와 함께 {settings.contact}에 문의하세요."
                         : Application.isEditor && (string.IsNullOrWhiteSpace(settings.retention) || string.IsNullOrWhiteSpace(settings.contact))
                             ? "BossStudySettings → Protocol에서 Retention(보관 기간)과 Contact(문의처)를 입력하세요."
                             : "아직 참여할 수 없습니다. 담당자에게 문의하세요.";
@@ -164,7 +163,7 @@ namespace BossTemplate
                     PreviewRating();
                     break;
                 case StudyScreen.Debrief:
-                    debrief.text = session.Protocol.debrief;
+                    debrief.text = session.Protocol.DebriefText;
                     participant.text = $"참가자 ID  {session.ParticipantId}";
                     contact.text = $"문의  {session.Protocol.contact}";
                     contactFeedbackUntil = 0;

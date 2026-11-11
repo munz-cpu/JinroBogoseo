@@ -55,6 +55,7 @@ namespace BossTemplate
         [SerializeField, InspectorName("골렘 주먹 렌더러")] private SpriteRenderer[] fists;
         private readonly SpriteRenderer[] battleFists = new SpriteRenderer[TotalFistCount];
         private readonly int[] fistSortingOrders = new int[OriginalFistCount];
+        private float fistRevealFloor;
         private readonly float[] reinforcementEntryX = new float[TotalFistCount - OriginalFistCount];
         private readonly float[] fistFlashUntil = new float[TotalFistCount];
         private readonly bool[] fistBusy = new bool[TotalFistCount];
@@ -90,7 +91,8 @@ namespace BossTemplate
             {
                 SpriteRenderer fist = fists[i];
                 fistSortingOrders[i] = fist.sortingOrder;
-                fist.sprite = fistSprite ? fistSprite : body.sprite;
+                if (fistSprite) fist.sprite = fistSprite;
+                else if (!fist.sprite) fist.sprite = body.sprite;
                 fist.transform.localScale = Vector3.one * (FistHeight / fist.sprite.bounds.size.y);
                 fist.sharedMaterial = appearance ? appearance.sharedMaterial : body.sharedMaterial;
                 battleFists[i] = fist;
@@ -170,6 +172,7 @@ namespace BossTemplate
             Intent = "플랫폼 뒤에서 거대한 골렘이 올라온다";
             float giantX = Mathf.Clamp(PlayerPosition.x, arena.GroundBounds.min.x + 5, arena.GroundBounds.max.x - 5);
             transform.position = new Vector3(giantX, StandingY, start.z);
+            fistRevealFloor = arena.GroundVisualBottom;
             if (appearance && (giantSprite || appearance.sprite))
             {
                 PlayMotion(null);
@@ -184,7 +187,8 @@ namespace BossTemplate
                 for (int i = 0; i < OriginalFistCount; i++)
                 {
                     fists[i].sortingOrder = behindPlatforms;
-                    fists[i].maskInteraction = SpriteMaskInteraction.VisibleInsideMask;
+                    // Sharing the giant's SpriteMask can draw its texture on the fists.
+                    fists[i].maskInteraction = SpriteMaskInteraction.None;
                 }
                 appearance.color = neutralColor * new Color(.8f, .86f, .94f, 1);
 
@@ -226,10 +230,7 @@ namespace BossTemplate
             Transitioning = false;
             Health.ResetHealth(PhaseTwoMaximum);
             for (int i = 0; i < OriginalFistCount; i++)
-            {
                 fists[i].sortingOrder = fistSortingOrders[i];
-                fists[i].maskInteraction = SpriteMaskInteraction.None;
-            }
             Intent = "2페이즈 시작";
             if (!arena.Finished)
             {
@@ -241,19 +242,22 @@ namespace BossTemplate
 
         private void ShowOriginalFists(float verticalOffset)
         {
-            PositionRisingFists(verticalOffset);
             for (int i = 0; i < OriginalFistCount; i++)
-            {
                 fists[i].flipX = i == 1;
-                fists[i].color = Color.white;
-                fists[i].enabled = true;
-            }
+            PositionRisingFists(verticalOffset);
         }
 
         private void PositionRisingFists(float verticalOffset)
         {
             for (int i = 0; i < OriginalFistCount; i++)
-                fists[i].transform.position = FistOrbitPosition(i, atOrbitStart: true) + Vector2.up * verticalOffset;
+            {
+                SpriteRenderer fist = fists[i];
+                fist.transform.position = FistOrbitPosition(i, atOrbitStart: true) + Vector2.up * verticalOffset;
+                // Reveal only when the foreground terrain can cover the part of the sprite below ground.
+                float alpha = Mathf.SmoothStep(0, 1, (fist.bounds.min.y - fistRevealFloor) / .65f);
+                fist.enabled = alpha > 0;
+                fist.color = new Color(1, 1, 1, alpha);
+            }
         }
 
         private Vector2 FistOrbitPosition(int index, bool atOrbitStart = false)

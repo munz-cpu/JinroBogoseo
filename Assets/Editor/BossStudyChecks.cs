@@ -218,14 +218,16 @@ internal static class BossStudyChecks
         arena.Boss.Health.Hit(arena.Boss.Health.Current);
         var hands = (SpriteRenderer[])typeof(ArenaBoss).GetField("battleFists", BindingFlags.Instance | BindingFlags.NonPublic)
             .GetValue(arena.Boss);
-        yield return Until(() => arena.Boss.Transitioning && hands[0].enabled, "Hands rise with the giant");
+        Sprite fistArt = hands[0].sprite;
+        yield return Until(() => arena.Boss.Transitioning && hands[0].enabled && hands[1].enabled, "Hands rise with the giant");
         Check(hands[0].sortingOrder <= arena.BehindPlatformSortingOrder
             && hands[1].sortingOrder <= arena.BehindPlatformSortingOrder
-            && hands[0].maskInteraction == SpriteMaskInteraction.VisibleInsideMask
-            && hands[1].maskInteraction == SpriteMaskInteraction.VisibleInsideMask,
-            "Rising hands are masked at the ground and render behind the platforms");
+            && hands[0].maskInteraction == SpriteMaskInteraction.None
+            && hands[1].maskInteraction == SpriteMaskInteraction.None
+            && hands[0].sprite.texture == fistArt.texture && hands[1].sprite.texture == fistArt.texture,
+            "Rising hands keep their fist texture behind the platforms");
         yield return Until(() => arena.Boss.Phase == 2 && !arena.Boss.Transitioning, "Natural phase transition");
-        Check(hands[0].maskInteraction == SpriteMaskInteraction.None && hands[1].maskInteraction == SpriteMaskInteraction.None,
+        Check(hands[0].sprite == fistArt && hands[1].sprite == fistArt,
             "Combat hands restore their normal rendering");
         var bossHealth = arena.Boss.Health;
         arena.Player.Health.InvulnerableUntil = Time.time + 45;
@@ -302,8 +304,10 @@ internal static class BossStudyChecks
         var reviewScenery = (GameObject)reviewData.FindProperty("debriefScenery").objectReferenceValue;
         var reviewBackdrop = (GameObject)reviewData.FindProperty("studyBackdrop").objectReferenceValue;
         Check(reviewScenery.activeInHierarchy && !reviewBackdrop.activeSelf, "Debrief shows the battle backdrop");
-        Check(((Text)reviewData.FindProperty("debrief").objectReferenceValue).text == study.Protocol.debrief,
-            "Debrief preserves the full configured notice");
+        Check(((Text)reviewData.FindProperty("debrief").objectReferenceValue).text == study.Protocol.DebriefText,
+            "Debrief shows the configured notice and contact instructions");
+        Check(!Array.Exists(review.GetComponentsInChildren<Button>(true), button => button.name == "내 기록 제외 요청"),
+            "The debrief has no record-exclusion button");
         yield return Until(() => study.HasPending && study.SyncStatus.Length > 0, "Rating remains queued after an offline submission");
         var retryStatus = (Text)reviewData.FindProperty("status").objectReferenceValue;
         var retryButton = (Button)reviewData.FindProperty("retry").objectReferenceValue;

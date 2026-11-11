@@ -61,7 +61,7 @@ namespace BossTemplate
         private IEnumerator DropDefeatedFist(int index)
         {
             SpriteRenderer fist = battleFists[index];
-            fist.maskInteraction = SpriteMaskInteraction.VisibleInsideMask;
+            fist.sortingOrder = arena.BehindPlatformSortingOrder;
             float delay = .07f * index;
             if (delay > 0) yield return new WaitForSeconds(delay);
 

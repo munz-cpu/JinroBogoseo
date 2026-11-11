@@ -16,7 +16,7 @@ namespace BossTemplate
         }
 
         [SerializeField] private Camera menuCamera;
-        [SerializeField] private GameObject scenery;
+        [SerializeField] private GameObject scenery, sceneryShade;
         [SerializeField] private SpriteRenderer sky;
         [SerializeField] private ParallaxLayer[] sceneryLayers;
         [SerializeField] private RectTransform golemLayer, navigation, details;
@@ -72,7 +72,12 @@ namespace BossTemplate
             AnimateParallax();
         }
 
-        internal void SetSceneryVisible(bool visible) => scenery.SetActive(visible);
+        internal void SetSceneryVisible(bool visible)
+        {
+            scenery.SetActive(visible);
+            golemLayer.gameObject.SetActive(visible);
+            if (sceneryShade) sceneryShade.SetActive(visible);
+        }
 
         internal RectTransform ShowBack(bool show)
         {

@@ -105,9 +105,10 @@ namespace BossTemplate
                 session.BeginAttempt();
             pauseMenu?.Advance();
             if (mainMenu == null) return;
+            if (session.Screen is StudyScreen.Title or StudyScreen.Consent or StudyScreen.Waiting or StudyScreen.Declined)
+                mainMenu.AnimateParallax();
             if (session.Screen == StudyScreen.Title)
             {
-                mainMenu.AnimateParallax();
                 if (escape) mainMenu.CloseDetails();
             }
             else if (escape) session.BackToTitle();
@@ -129,10 +130,12 @@ namespace BossTemplate
             screenSlide?.Finish();
             screenSlide = null;
             if (activeScreen) activeScreen.SetActive(false);
-            mainMenu?.SetSceneryVisible(screen == StudyScreen.Title);
+            bool participation = screen is StudyScreen.Consent or StudyScreen.Waiting or StudyScreen.Declined;
+            bool showMenuScenery = mainMenu && (screen == StudyScreen.Title || participation);
+            mainMenu?.SetSceneryVisible(showMenuScenery);
             bool showDebriefScenery = debriefScenery && (screen is StudyScreen.Debrief or StudyScreen.Survey);
             if (debriefScenery) debriefScenery.SetActive(showDebriefScenery);
-            if (studyBackdrop) studyBackdrop.SetActive(screen != StudyScreen.Title && !showDebriefScenery);
+            if (studyBackdrop) studyBackdrop.SetActive(screen != StudyScreen.Title && !showMenuScenery && !showDebriefScenery);
             activeScreen = screens[(int)(screen == StudyScreen.Defeat ? StudyScreen.Combat : screen)];
             if (!activeScreen)
             {
@@ -180,7 +183,7 @@ namespace BossTemplate
             }
 
             activeScreen.SetActive(true);
-            var back = mainMenu?.ShowBack(screen is StudyScreen.Consent or StudyScreen.Waiting or StudyScreen.Declined);
+            var back = mainMenu?.ShowBack(participation);
             if (screen == StudyScreen.Title) mainMenu?.Show();
             var slideContent = screen switch
             {

@@ -91,6 +91,7 @@ internal static class BossStudyChecks
         var items = menu.Find("메뉴 항목");
         var play = items.Find("게임 시작").GetComponent<Button>();
         Check(play.GetComponentInChildren<Text>().text == "게임 시작", "New participant sees Start");
+        yield return new WaitForSecondsRealtime(1.3f);
         Canvas.ForceUpdateCanvases();
         var corners = new Vector3[4];
         var menuBounds = ((RectTransform)menu).rect;
@@ -110,7 +111,8 @@ internal static class BossStudyChecks
         var sky = scenery.transform.Find("Sky");
         Check(sky.GetComponent<SpriteRenderer>().sharedMaterial == AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/PixelLostBackground.mat"),
             "The menu uses the same background material as the arena");
-        var golem = (RectTransform)menu.Find("골렘");
+        var golem = (RectTransform)new SerializedObject(menu.GetComponent<StudyMainMenu>())
+            .FindProperty("golemLayer").objectReferenceValue;
         Check(golem.GetComponent<Image>().sprite, "Golem sprite is linked");
         float initialSkyY = sky.localPosition.y;
         float initialGolemY = golem.anchoredPosition.y;
@@ -160,7 +162,8 @@ internal static class BossStudyChecks
         play.onClick.Invoke();
         yield return Until(() => SceneManager.GetActiveScene().path == StudySceneEntry.IntroPath
             && study.Screen == StudyScreen.Consent, "Start opens consent from the main menu");
-        Check(!scenery.activeSelf && studyBackdrop.activeSelf, "The consent screen restores its study background");
+        Check(scenery.activeSelf && golem.gameObject.activeInHierarchy && !studyBackdrop.activeSelf,
+            "The consent screen uses the title scenery and golem");
         var panel = UnityEngine.Object.FindAnyObjectByType<StudyPanel>();
         var consentButton = Array.Find(panel.GetComponentsInChildren<UnityEngine.UI.Button>(),
             button => button.name == "연구 참여에 동의하고 시작");

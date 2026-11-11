@@ -103,16 +103,21 @@ namespace BossTemplate
         {
             var area = Rect(parent, "음량 조절", position, new Vector2(332, 40));
             var track = Rect(area, "Track", Vector2.left * 10, new Vector2(312, 3));
-            track.gameObject.AddComponent<Image>().color = surface;
+            var trackImage = track.gameObject.AddComponent<Image>();
+            trackImage.color = surface;
+            RoundedUi.Apply(trackImage, 2, 0);
             var fill = Rect(track, "Fill", Vector2.zero, Vector2.zero);
             fill.anchorMin = Vector2.zero;
             fill.anchorMax = Vector2.one;
-            fill.gameObject.AddComponent<Image>().color = accent;
+            var fillImage = fill.gameObject.AddComponent<Image>();
+            fillImage.color = accent;
+            RoundedUi.Apply(fillImage, 2, 0);
             var travel = Rect(area, "Handle Area", Vector2.left * 10, new Vector2(312, 20));
             var handle = Rect(travel, "Handle", Vector2.zero, new Vector2(11, 11));
             handle.localRotation = Quaternion.Euler(0, 0, 45);
             var handleImage = handle.gameObject.AddComponent<Image>();
             handleImage.color = accent;
+            RoundedUi.Apply(handleImage, 2, .75f);
             area.gameObject.AddComponent<Image>().color = Color.clear;
             var slider = area.gameObject.AddComponent<Slider>();
             slider.fillRect = fill;

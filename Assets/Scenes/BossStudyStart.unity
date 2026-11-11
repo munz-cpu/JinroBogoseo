@@ -1221,6 +1221,7 @@ GameObject:
   - component: {fileID: 1506550558}
   - component: {fileID: 1506550557}
   - component: {fileID: 1506550559}
+  - component: {fileID: 2138000000}
   m_Layer: 0
   m_Name: "\uC2DC\uC791"
   m_TagString: Untagged
@@ -2167,12 +2168,11 @@ MonoBehaviour:
   m_GameObject: {fileID: 360392692}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e19747de3f5aca642ab2be37e372fb86, type: 3}
+  m_Script: {fileID: 11500000, guid: 37bcf1e4d06d41529abb38ef1d6e9e52, type: 3}
   m_Name:
-  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Outline
-  m_EffectColor: {r: 0.19607843, g: 0.25882354, b: 0.22745098, a: 1}
-  m_EffectDistance: {x: 1, y: -1}
-  m_UseGraphicAlpha: 0
+  m_EditorClassIdentifier: Assembly-CSharp::BossTemplate.RoundedUi
+  radius: 16
+  borderWidth: 1.25
 --- !u!114 &360392695
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3601,12 +3601,11 @@ MonoBehaviour:
   m_GameObject: {fileID: 1647011738}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e19747de3f5aca642ab2be37e372fb86, type: 3}
+  m_Script: {fileID: 11500000, guid: 37bcf1e4d06d41529abb38ef1d6e9e52, type: 3}
   m_Name:
-  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Outline
-  m_EffectColor: {r: 0.19607843, g: 0.25882354, b: 0.22745098, a: 1}
-  m_EffectDistance: {x: 1, y: -1}
-  m_UseGraphicAlpha: 0
+  m_EditorClassIdentifier: Assembly-CSharp::BossTemplate.RoundedUi
+  radius: 16
+  borderWidth: 1.25
 --- !u!114 &1647011741
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3885,6 +3884,7 @@ GameObject:
   - component: {fileID: 2061370740}
   - component: {fileID: 2061370742}
   - component: {fileID: 2061370741}
+  - component: {fileID: 2138000001}
   m_Layer: 0
   m_Name: "\uC544\uD2B8 \uD558\uB2E8 \uB77C\uBCA8"
   m_TagString: Untagged
@@ -4026,6 +4026,34 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2136062090}
   m_CullTransparentMesh: 1
+--- !u!114 &2138000000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1506550556}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 37bcf1e4d06d41529abb38ef1d6e9e52, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::BossTemplate.RoundedUi
+  radius: 11
+  borderWidth: 1.25
+--- !u!114 &2138000001
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2061370739}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 37bcf1e4d06d41529abb38ef1d6e9e52, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::BossTemplate.RoundedUi
+  radius: 6
+  borderWidth: 0.8
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

@@ -10,7 +10,6 @@ namespace BossTemplate
         internal const string IntroPath = "Assets/Scenes/BossStudyIntro.unity";
         internal const string GamePath = "Assets/Scenes/BossStudyGame.unity";
         internal const string ReviewPath = "Assets/Scenes/BossStudyReview.unity";
-        internal const string ReplayPath = "Assets/Scenes/BossFight.unity";
 
         [SerializeField, InspectorName("연구 단계")] private StudyStage stage;
         [SerializeField, InspectorName("연구 설정")] private StudySettings settings;

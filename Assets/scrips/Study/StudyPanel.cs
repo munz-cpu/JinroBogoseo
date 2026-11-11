@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
@@ -12,13 +13,14 @@ namespace BossTemplate
         [SerializeField] private Text readyTitle, attemptLabel;
         [SerializeField] private Button attempt, stopFromReady, stopFromCombat;
         [SerializeField] private Text ratingTitle, debrief, participant, contact, withdrawalMessage;
-        [SerializeField] private Button[] ratings;
+        [SerializeField] private StudyRatingButton[] ratings;
         [SerializeField] private Button skipRating, withdraw, retry, replay;
         [SerializeField] private Text status;
         [SerializeField] private bool useSceneFonts;
 
         private StudySession session;
         private GameObject activeScreen;
+        private bool submittingRating;
 
         internal void Bind(StudySession owner, Font font)
         {
@@ -39,12 +41,16 @@ namespace BossTemplate
             Listen(skipRating, () => session.SubmitRating(null));
             Listen(withdraw, session.Withdraw);
             Listen(retry, session.Retry);
-            Listen(replay, session.ReplayBossFight);
+            Listen(replay, session.StartNewStudy);
 
             for (int i = 0; i < ratings.Length; i++)
             {
                 int rating = i + 1;
-                Listen(ratings[i], () => session.SubmitRating(rating));
+                ratings[i].PreviewChanged += PreviewRating;
+                Listen(ratings[i], () =>
+                {
+                    if (!submittingRating) StartCoroutine(ConfirmRating(rating));
+                });
             }
         }
 
@@ -81,6 +87,10 @@ namespace BossTemplate
                     break;
                 case StudyScreen.Survey:
                     ratingTitle.text = session.Cleared ? "보스전 승리" : "도전 종료";
+                    submittingRating = false;
+                    foreach (var button in ratings) button.interactable = true;
+                    skipRating.interactable = true;
+                    PreviewRating();
                     break;
                 case StudyScreen.Debrief:
                     debrief.text = session.Protocol.debrief;
@@ -103,8 +113,43 @@ namespace BossTemplate
             RefreshStatus();
         }
 
+        private void PreviewRating()
+        {
+            if (submittingRating) return;
+            int hovered = 0, focused = 0;
+            for (int i = 0; i < ratings.Length; i++)
+            {
+                if (ratings[i].Hovered) hovered = i + 1;
+                if (ratings[i].Focused) focused = i + 1;
+            }
+            int preview = hovered > 0 ? hovered : focused;
+            for (int i = 0; i < ratings.Length; i++)
+                ratings[i].SetStar(i < preview ? .68f : .28f, 1);
+        }
+
+        private IEnumerator ConfirmRating(int rating)
+        {
+            submittingRating = true;
+            foreach (var button in ratings) button.interactable = false;
+            skipRating.interactable = false;
+
+            const float duration = .32f;
+            for (float elapsed = 0; elapsed < duration; elapsed += Time.unscaledDeltaTime)
+            {
+                float pulse = Mathf.Sin(Mathf.PI * elapsed / duration);
+                for (int i = 0; i < ratings.Length; i++)
+                {
+                    float expansion = i == rating - 1 ? .34f : .17f;
+                    ratings[i].SetStar(i < rating ? 1 : .28f, i < rating ? 1 + expansion * pulse : 1);
+                }
+                yield return null;
+            }
+            session.SubmitRating(rating);
+        }
+
         internal void RefreshStatus()
         {
+            if (replay) replay.interactable = session.CanReplay;
             if (!status) return;
             bool showNetwork = session.Screen is StudyScreen.Waiting or StudyScreen.Ready or StudyScreen.Survey or StudyScreen.Debrief
                 || (session.Screen == StudyScreen.Withdrawal && session.WithdrawalPending);

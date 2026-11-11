@@ -8,6 +8,8 @@ namespace BossTemplate
     {
         internal static readonly BossPattern[] Patterns = (BossPattern[])Enum.GetValues(typeof(BossPattern));
         internal static readonly PatternParameters Neutral = new PatternParameters();
+        private const float HardPlateau = .90f;
+        private const float EasyPlateau = .12f;
 
         internal static DifficultySnapshot Choose(StudyProtocol settings, IReadOnlyList<AttemptRecord> history,
             int nextAttempt, int target, string now, out DifficultyChange change, bool fixedHard = false)
@@ -15,60 +17,24 @@ namespace BossTemplate
             float minimum = Mathf.Clamp01(Mathf.Min(settings.minimumLevel, settings.maximumLevel));
             float maximum = Mathf.Clamp01(Mathf.Max(settings.minimumLevel, settings.maximumLevel));
             if (fixedHard) history = Array.Empty<AttemptRecord>();
+
+            int easingStart = Mathf.Max(1, target - 2);
+            int easingEnd = target + 3;
+            float progress = Mathf.InverseLerp(easingStart, easingEnd, nextAttempt);
+            float level = fixedHard ? maximum : Mathf.Lerp(minimum, maximum,
+                Mathf.SmoothStep(HardPlateau, EasyPlateau, progress));
             AttemptRecord last = history.Count > 0 ? history[history.Count - 1] : null;
-            float previous = fixedHard ? maximum
-                : last == null ? Mathf.Clamp(settings.initialLevel, minimum, maximum) : last.difficulty.level;
-            float level = previous;
-            string reason = fixedHard ? "fixed_hard" : "initial";
-
-            if (last != null)
-            {
-                // The newest run dominates, but recent boss progress and survival reduce single-run noise.
-                float trend = 0;
-                float progress = 0;
-                float survival = 0;
-                float weightSum = 0;
-                for (int i = 0; i < history.Count; i++)
-                {
-                    float weight = i + 1;
-                    progress += (1 - history[i].boss_hp_remaining) * weight;
-                    survival += Mathf.Clamp01(history[i].duration_seconds / 90f) * weight;
-                    weightSum += weight;
-                }
-                if (history.Count > 1)
-                    trend = Mathf.Clamp(history[0].boss_hp_remaining - last.boss_hp_remaining, -.4f, .4f);
-                float pressure = Mathf.Clamp01(last.damage_taken / Mathf.Max(30, last.duration_seconds * 3));
-                float readiness = .65f * progress / weightSum + .20f * survival / weightSum
-                    + .35f * trend - .15f * pressure;
-                int remaining = target - nextAttempt;
-                float step = Mathf.Clamp(settings.maximumStep, .01f, .25f);
-
-                reason = "hold";
-                if (remaining <= 1)
-                {
-                    level -= step * (remaining <= 0 ? 1f : .6f);
-                    reason = "near_target";
-                }
-                else if (readiness < .27f)
-                {
-                    level -= step * .65f;
-                    reason = "struggling";
-                }
-                else if (readiness > .57f && last.result == "defeat")
-                {
-                    level += step * Mathf.Clamp01((readiness - .5f) * 3);
-                    reason = "ahead_of_target";
-                }
-            }
-
-            level = Mathf.Clamp(level, minimum, maximum);
+            string reason = fixedHard ? "fixed_hard" : nextAttempt == 1 ? "initial"
+                : nextAttempt > easingStart && nextAttempt <= easingEnd ? "near_target" : "hold";
             change = new DifficultyChange
             {
-                applied_at = now, previous_level = previous, new_level = level, reason = reason
+                applied_at = now, previous_level = last?.difficulty.level ?? level, new_level = level, reason = reason
             };
             var profile = new DifficultySnapshot
             {
-                level = level, boss_health = Factor(settings.bossHealth, level, .45f, 1.7f),
+                level = level,
+                boss_health = Mathf.Lerp(Mathf.Clamp(settings.bossHealth.x, .94f, 1.12f),
+                    Mathf.Clamp(settings.bossHealth.y, .94f, 1.12f), level),
                 patterns = new PatternParameters[Patterns.Length]
             };
             foreach (var pattern in Patterns)
@@ -82,11 +48,8 @@ namespace BossTemplate
                 profile.patterns[(int)pattern] = new PatternParameters
                 {
                     pattern_id = id,
-                    speed = Factor(range.speed, level, .7f, 1.3f),
-                    interval = Factor(range.interval, level, .7f, 1.6f),
-                    hitbox = Factor(range.hitbox, level, .7f, 1.2f),
-                    damage = Factor(range.damage, level, .45f, 1.6f),
-                    selection_weight = Factor(range.selectionWeight, selectionLevel, .1f, 5f)
+                    selection_weight = Mathf.Clamp(Mathf.Lerp(range.selectionWeight.x, range.selectionWeight.y,
+                        selectionLevel), .1f, 5f)
                 };
             }
             return profile;
@@ -106,7 +69,6 @@ namespace BossTemplate
             return Mathf.Clamp01(damage / Mathf.Max(1, executions * 25f));
         }
 
-        private static float Factor(Vector2 bounds, float level, float minimum, float maximum) =>
-            Mathf.Clamp(Mathf.Lerp(bounds.x, bounds.y, level), minimum, maximum);
+        internal static float SupportRainChance(float level) => Mathf.Lerp(.05f, .55f, level);
     }
 }

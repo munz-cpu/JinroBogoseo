@@ -44,9 +44,11 @@ namespace BossTemplate
         // A save written before enrollment can deserialize with an empty protocol object.
         internal StudyProtocol Protocol => (state?.participant != null ? state.protocol : null) ?? asset.protocol;
         internal bool HasPending => state?.pending.Count > 0;
+        internal bool CanReplay => Screen == StudyScreen.Debrief && !changingScene && !HasPending;
         internal string SyncStatus => syncStatus;
         internal string ParticipantId => state.participant?.participant_id ?? state.withdrawalParticipantId ?? "";
         internal float BossHealthFactor => state?.active?.difficulty.boss_health ?? 1;
+        internal float SupportRainChance => AdaptiveDifficulty.SupportRainChance(state?.active?.difficulty.level ?? 0);
         internal static string Now() => DateTime.UtcNow.ToString("O");
 
 #if UNITY_EDITOR
@@ -100,7 +102,12 @@ namespace BossTemplate
             if (state.withdrawalPending || state.withdrawn) Show(StudyScreen.Withdrawal);
             else if (state.declined) Show(StudyScreen.Declined);
             else if (state.debrief) Show(StudyScreen.Debrief);
-            else if (state.surveyDue) Show(StudyScreen.Survey);
+            else if (state.surveyDue && state.cleared) Show(StudyScreen.Survey);
+            else if (state.surveyDue)
+            {
+                CloseStudy(null);
+                if (Persist()) Show(StudyScreen.Debrief);
+            }
             else if (state.assignment != null) Show(StudyScreen.Ready);
             else if (state.participant != null) Show(StudyScreen.Waiting);
             else Show(stage == StudyStage.Start ? StudyScreen.Title : StudyScreen.Consent);
@@ -153,7 +160,7 @@ namespace BossTemplate
                 participant_id = state.participant.participant_id, attempt_id = Guid.NewGuid().ToString("D"),
                 attempt_number = number, experiment_group = state.assignment.experiment_group,
                 assignment_version = state.assignment.assignment_version, settings_version = state.participant.settings_version,
-                target_attempts = state.assignment.target_attempts, started_at = now, ended_at = now,
+                target_attempts = state.assignment.target_attempts, started_at = now, ended_at = now, boss_phase = 1,
                 difficulty = difficulty, difficulty_changes = new[] { change },
                 pattern_stats = Array.ConvertAll(difficulty.patterns, p => new PatternStat { pattern_id = p.pattern_id })
             };
@@ -221,8 +228,8 @@ namespace BossTemplate
                 if (Screen != StudyScreen.Ready) return;
             }
             if (Screen != StudyScreen.Ready) return;
-            state.surveyDue = true;
-            if (Persist()) Show(StudyScreen.Survey);
+            CloseStudy(null);
+            if (Persist()) Show(StudyScreen.Debrief);
         }
 
         private void Sample()
@@ -232,6 +239,9 @@ namespace BossTemplate
             string now = Now();
             attempt.ended_at = string.CompareOrdinal(now, attempt.started_at) >= 0 ? now : attempt.started_at;
             attempt.boss_hp_remaining = arena.StudyBossHealthRemaining;
+            attempt.boss_phase = arena.Boss.Phase;
+            var health = arena.Boss.Health;
+            attempt.phase_progress_percent = 100 * Mathf.Clamp01(1 - health.Current / health.Maximum);
         }
 
         private void Finish(string result, bool useCheckpoint = false)
@@ -240,17 +250,23 @@ namespace BossTemplate
             var attempt = state.active;
             attempt.result = result;
             attempt.cleared = result == "cleared";
-            if (attempt.cleared) attempt.boss_hp_remaining = 0;
+            if (attempt.cleared)
+            {
+                attempt.boss_hp_remaining = 0;
+                attempt.boss_phase = 2;
+                attempt.phase_progress_percent = 100;
+            }
             state.active = null;
             state.lastAttempt = attempt;
             state.cleared = attempt.cleared;
-            state.surveyDue = attempt.cleared || result == "stopped";
+            state.surveyDue = attempt.cleared;
             if (result is "defeat" or "cleared")
             {
                 state.recent.Add(attempt);
                 if (state.recent.Count > 4) state.recent.RemoveAt(0);
             }
             Enqueue("attempts", attempt);
+            if (result == "stopped") CloseStudy(null);
             if (Persist())
             {
                 if (arena) arena.EndStudyFight();
@@ -260,7 +276,13 @@ namespace BossTemplate
 
         internal void SubmitRating(int? rating)
         {
-            if (Screen != StudyScreen.Survey || rating is < 1 or > 5) return;
+            if (Screen != StudyScreen.Survey || !state.cleared || rating is < 1 or > 5) return;
+            CloseStudy(rating);
+            if (Persist()) Show(StudyScreen.Debrief);
+        }
+
+        private void CloseStudy(int? rating)
+        {
             Enqueue("surveys", new SurveyRecord
             {
                 participant_id = state.participant.participant_id, settings_version = state.participant.settings_version,
@@ -270,7 +292,6 @@ namespace BossTemplate
             state.surveyDue = false;
             state.debrief = true;
             state.recent.Clear();
-            if (Persist()) Show(StudyScreen.Debrief);
         }
 
         internal void Withdraw()
@@ -289,10 +310,22 @@ namespace BossTemplate
             Show(StudyScreen.Withdrawal);
         }
 
-        internal void ReplayBossFight()
+        internal void StartNewStudy()
         {
-            if (Screen != StudyScreen.Debrief || changingScene) return;
-            LoadScene(StudySceneEntry.ReplayPath);
+            if (!CanReplay) return;
+            try
+            {
+                storage.ArchiveCompleted(state);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
+            {
+                FailStorage(error);
+                return;
+            }
+            state = new StudySave();
+            if (!Persist()) return;
+            Retry();
+            Show(StudyScreen.Consent);
         }
 
         private void ClearRegistration()

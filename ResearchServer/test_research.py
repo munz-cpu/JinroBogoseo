@@ -1,3 +1,4 @@
+import json
 import os
 import random
 import sqlite3
@@ -10,9 +11,9 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-from main import create_app
+from main import DEFAULT_GROUPS, create_app
 from metrics import analyze
-from models import Group, Participant
+from models import Attempt, Group, Participant
 from sheets import SheetsMirror
 from store import Store
 
@@ -115,6 +116,18 @@ class StudyTest(unittest.TestCase):
             self.assertEqual(result["mean_absolute_error"], 6)
             self.assertEqual(result["within_one_rate"], 0)
 
+    def test_fixed_hard_group_configuration_and_attempt_payload(self):
+        groups = {group.group: group for group in
+                  (Group.model_validate(item) for item in json.loads(DEFAULT_GROUPS))}
+        self.assertEqual(set(groups), set("ABCD"))
+        self.assertEqual(groups["D"].target_attempts, groups["C"].target_attempts)
+        self.assertEqual({group.weight for group in groups.values()}, {1})
+        attempt = self.attempt()
+        attempt.update(experiment_group="D", target_attempts=groups["D"].target_attempts)
+        attempt["difficulty"]["level"] = 1
+        attempt["difficulty_changes"][0].update(previous_level=1, new_level=1, reason="fixed_hard")
+        self.assertEqual(Attempt.model_validate(attempt).difficulty_changes[0].reason, "fixed_hard")
+
     def test_skipped_survey_is_optional_and_counts_dropout(self):
         self.register()
         survey = {**self.survey(), "skipped": True, "scores": [], "cleared": False, "actual_attempts": 0}
@@ -135,6 +148,33 @@ class StudyTest(unittest.TestCase):
         session = FakeSheets()
         SheetsMirror(self.client.app.state.store, "fake-sheet", 30).sync(session)
         self.assertEqual(session.rows["Surveys"][1][3:9], [4, None, None, None, None, None])
+        header, row = session.rows["Participants"]
+        summary = dict(zip(header, row))
+        self.assertEqual((summary["progress"], summary["star_rating"]), ("완료", 4))
+
+    def test_phase_progress_and_participant_totals(self):
+        attempt = self.attempt()
+        attempt.update(cleared=False, result="defeat", boss_hp_remaining=.75, boss_phase=1, phase_progress_percent=42)
+        self.assertEqual(self.post("/attempts", {**attempt, "phase_progress_percent": 101}).status_code, 422)
+        self.assertEqual(self.post("/attempts", attempt).status_code, 204)
+        second = {**attempt, "attempt_id": str(uuid4()), "attempt_number": 2, "boss_phase": 2,
+                  "phase_progress_percent": 25, "boss_hp_remaining": .25, "duration_seconds": 90, "damage_taken": 20}
+        self.assertEqual(self.post("/attempts", second).status_code, 204)
+        legacy_rating = {**self.survey(), "scores": [5], "actual_attempts": 2, "cleared": False}
+        self.assertEqual(self.post("/surveys", legacy_rating).status_code, 204)
+
+        session = FakeSheets()
+        SheetsMirror(self.client.app.state.store, "fake-sheet", 30).sync(session)
+        header, row = session.rows["Participants"]
+        summary = dict(zip(header, row))
+        self.assertEqual(summary["participant_id"], self.p["participant_id"])
+        self.assertEqual(summary["progress"], "페이즈2 25.0%")
+        self.assertIsNone(summary["star_rating"])
+        self.assertEqual((summary["actual_attempts"], summary["target_attempts"]), (2, 7))
+        self.assertEqual((summary["total_play_time_seconds"], summary["total_damage_taken"]), (150, 30))
+        self.assertEqual(summary["last_result"], "defeat")
+        self.assertEqual(session.rows["Attempts"][1][-3:], [1, 42, "페이즈1 42.0%"])
+        self.assertIsNone(session.rows["Surveys"][1][3])
 
     def test_withdrawal_and_sheets_retry(self):
         attempt = self.attempt()

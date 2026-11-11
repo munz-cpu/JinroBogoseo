@@ -85,6 +85,8 @@ class Attempt(Assignment):
     damage_taken: Amount
     damage_dealt: Amount
     boss_hp_remaining: Ratio
+    boss_phase: Literal[0, 1, 2] = 0
+    phase_progress_percent: Annotated[float, Field(ge=0, le=100)] = 0
     pattern_stats: list[PatternStat] = Field(min_length=1, max_length=64)
     difficulty: Difficulty
     difficulty_changes: list[DifficultyChange] = Field(min_length=1, max_length=1)
@@ -95,6 +97,11 @@ class Attempt(Assignment):
     def consistent_attempt(self):
         if self.ended_at < self.started_at or self.cleared != (self.result == "cleared"):
             raise ValueError("inconsistent attempt outcome or time")
+        if (not self.boss_phase and self.phase_progress_percent != 0
+                or self.cleared and self.boss_phase and (self.boss_phase, self.phase_progress_percent) != (2, 100)):
+            raise ValueError("inconsistent phase progress")
+        if ("boss_phase" in self.model_fields_set) != ("phase_progress_percent" in self.model_fields_set):
+            raise ValueError("phase and progress must be submitted together")
         expected = {p.pattern_id for p in self.difficulty.patterns}
         if len(self.pattern_stats) != len(expected) or {p.pattern_id for p in self.pattern_stats} != expected:
             raise ValueError("pattern stats must match difficulty patterns")

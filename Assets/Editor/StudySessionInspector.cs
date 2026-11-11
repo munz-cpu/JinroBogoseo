@@ -13,6 +13,7 @@ internal sealed class StudySessionInspector : Editor
     private DifficultySnapshot preview;
     private StudySave previewState;
     private StudyAssignment previewAssignment;
+    private int previewAttempt;
 
     public override bool RequiresConstantRepaint() => EditorApplication.isPlaying;
 
@@ -35,7 +36,7 @@ internal sealed class StudySessionInspector : Editor
         {
             EditorGUILayout.LabelField("실험 그룹", assignment.experiment_group);
             EditorGUILayout.LabelField("목표 도전 횟수", assignment.target_attempts.ToString());
-            if (assignment.FixedHard) EditorGUILayout.LabelField("난이도 방식", "고정 어려움");
+            EditorGUILayout.LabelField("난이도 방식", assignment.FixedHard ? "고정 어려움" : "목표 횟수 곡선");
         }
 
         var active = state?.active;
@@ -68,6 +69,11 @@ internal sealed class StudySessionInspector : Editor
 
         EditorGUILayout.LabelField("난이도", $"{difficulty.level:F2}");
         EditorGUILayout.LabelField("보스 체력 배수", $"{difficulty.boss_health:F2}×");
+        if (last != null && active == null && assignment != null && !state.surveyDue && !state.debrief)
+        {
+            var next = PreviewDifficulty(state);
+            if (next != null) EditorGUILayout.LabelField("다음 도전 난이도", $"{next.level:F2}");
+        }
 
         showPatterns = EditorGUILayout.Foldout(showPatterns, "공격 패턴별 스탯과 등장 확률", true);
         if (!showPatterns) return;
@@ -100,14 +106,17 @@ internal sealed class StudySessionInspector : Editor
 
     private DifficultySnapshot PreviewDifficulty(StudySave state)
     {
-        if (preview != null && state == previewState && state?.assignment == previewAssignment) return preview;
+        int attempt = (state?.attempts ?? 0) + 1;
+        if (preview != null && state == previewState && state?.assignment == previewAssignment && attempt == previewAttempt)
+            return preview;
         var settings = AssetDatabase.LoadAssetAtPath<StudySettings>("Assets/Settings/BossStudySettings.asset");
         var protocol = (state?.participant != null ? state.protocol : null) ?? settings?.protocol;
         if (protocol == null) return null;
         previewState = state;
         previewAssignment = state?.assignment;
+        previewAttempt = attempt;
         var history = state != null ? (System.Collections.Generic.IReadOnlyList<AttemptRecord>)state.recent : Array.Empty<AttemptRecord>();
-        preview = AdaptiveDifficulty.Choose(protocol, history, (state?.attempts ?? 0) + 1,
+        preview = AdaptiveDifficulty.Choose(protocol, history, attempt,
             previewAssignment?.target_attempts ?? 1, StudySession.Now(), out _, previewAssignment?.FixedHard == true);
         return preview;
     }
@@ -141,11 +150,13 @@ internal sealed class StudySessionInspector : Editor
         var parameters = difficulty.ParametersFor(pattern);
         if (parameters == null) return;
         EditorGUILayout.Space();
-        EditorGUILayout.LabelField("1페이즈 배경 낙석", EditorStyles.boldLabel);
+        EditorGUILayout.LabelField("보조 낙석", EditorStyles.boldLabel);
         DrawPattern(stats, pattern, parameters);
         if (parameters.selection_weight > 0)
-            EditorGUILayout.LabelField($"타이머 · 공격 종료 후 {ArenaBoss.RockRainRepeatDelay(parameters):F2}초 대기",
+            EditorGUILayout.LabelField($"1페이즈 · 공격 종료 후 {ArenaBoss.RockRainRepeatDelay(parameters):F2}초 대기",
                 EditorStyles.miniLabel);
+        EditorGUILayout.LabelField($"2페이즈 · 잽·어퍼컷·후려치기에 낙석이 겹칠 확률 {AdaptiveDifficulty.SupportRainChance(difficulty.level):P1}",
+            EditorStyles.wordWrappedMiniLabel);
     }
 
     private static void DrawPattern(PatternStat[] stats, BossPattern pattern, PatternParameters parameters)

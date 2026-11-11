@@ -24,6 +24,9 @@ namespace BossTemplate
                     BossPattern pattern = arena.Study.Pick(StudySession.PhaseTwo, previous);
                     previous = pattern;
                     arena.Study.Executed(pattern);
+                    if ((pattern is BossPattern.fist_jab or BossPattern.fist_uppercut or BossPattern.fist_backhand)
+                        && Random.value < arena.Study.SupportRainChance)
+                        SpawnFistSupportRain();
                     yield return RunFistPattern(pattern);
                     yield return new WaitForSeconds(.45f * arena.Parameters(pattern).interval);
                 }
@@ -52,6 +55,27 @@ namespace BossTemplate
                     yield return new WaitForSeconds(.45f);
                 }
             }
+        }
+
+        private void SpawnFistSupportRain()
+        {
+            const float offset = 4.5f;
+            const float warning = .75f;
+            const float fallSpeed = 11f;
+            float left = arena.GroundBounds.min.x + 2;
+            float right = arena.GroundBounds.max.x - 2;
+            float playerX = PlayerPosition.x;
+            float x = playerX + (Random.value < .5f ? -offset : offset);
+            if (x < left || x > right) x = 2 * playerX - x;
+            x = Mathf.Clamp(x, left, right);
+            var rock = arena.SpawnRock(BossPattern.rock_rain, new Vector2(x, arena.GroundY + FallingRockHoverHeight),
+                Vector2.down * fallSpeed, 8, RockFlight.Crashing, holdTime: warning);
+            if (!rock) return;
+
+            arena.Study.Executed(BossPattern.rock_rain);
+            float width = rock.GetComponent<SpriteRenderer>().bounds.size.x;
+            arena.Flash(new Vector2(x, arena.GroundY + .12f), new Vector2(width, .24f), FistLaneColor,
+                warning + FallingRockHoverHeight / fallSpeed);
         }
 
         private IEnumerator RunFistPattern(BossPattern pattern) => pattern switch

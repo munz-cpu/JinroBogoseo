@@ -26,6 +26,19 @@ namespace BossTemplate
 
         internal void Write(StudySave state)
         {
+            Write(path, state);
+        }
+
+        internal void ArchiveCompleted(StudySave state)
+        {
+            if (!Guid.TryParse(state.participant.participant_id, out var participantId))
+                throw new InvalidDataException("Invalid completed study participant ID");
+            string archive = Path.Combine(Path.GetDirectoryName(path), "completed-studies", $"{participantId:D}.json");
+            Write(archive, state);
+        }
+
+        private static void Write(string path, StudySave state)
+        {
             string temp = path + ".tmp";
             Directory.CreateDirectory(Path.GetDirectoryName(path));
             using (var stream = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None))

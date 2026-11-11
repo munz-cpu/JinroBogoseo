@@ -5,23 +5,51 @@ from threading import Event, Thread
 log = logging.getLogger("research.sheets")
 
 HEADERS = {
-    "Participants": "participant_id age_group gaming_experience target_attempts consent_version experiment_group settings_version assignment_version",
-    "Attempts": "participant_id attempt_id attempt_number target_attempts duration_seconds damage_taken damage_dealt boss_hp_remaining difficulty_level result",
+    "Participants": (
+        "participant_id age_group gaming_experience target_attempts consent_version experiment_group "
+        "settings_version assignment_version progress star_rating actual_attempts total_play_time_seconds "
+        "total_damage_taken last_result"
+    ),
+    "Attempts": (
+        "participant_id attempt_id attempt_number target_attempts duration_seconds damage_taken damage_dealt "
+        "boss_hp_remaining difficulty_level result boss_phase phase_progress_percent progress"
+    ),
     "PatternStats": "participant_id attempt_id pattern_id hit_count average_damage difficulty_parameters executions damage_taken",
     "Surveys": "participant_id cleared actual_attempts achievement_score immersion_score fairness_score frustration_score retry_intention_score difficulty_score skipped",
 }
 
 
+def attempt_progress(attempt):
+    if attempt["cleared"]:
+        return "완료"
+    if attempt.get("boss_phase"):
+        return f'페이즈{attempt["boss_phase"]} {attempt["phase_progress_percent"]:.1f}%'
+    return None
+
+
 def snapshot(store):
     rows = {name: [header.split()] for name, header in HEADERS.items()}
+    participants = {}
     with store.connection() as db:
         revision = db.execute("SELECT revision FROM mirror_state WHERE id=1").fetchone()[0]
         for p in db.execute("SELECT * FROM participants ORDER BY participant_id"):
-            rows["Participants"].append([p[k] for k in rows["Participants"][0]])
+            participants[p["participant_id"]] = dict(
+                p, progress="페이즈1 0.0%", star_rating=None, actual_attempts=0,
+                total_play_time_seconds=0, total_damage_taken=0, last_result=None,
+            )
         for row in db.execute("SELECT payload FROM attempts ORDER BY participant_id, attempt_number"):
             a = json.loads(row[0])
             a["difficulty_level"] = a["difficulty"]["level"]
+            a["progress"] = attempt_progress(a)
+            if not a.get("boss_phase"):
+                a["boss_phase"] = a["phase_progress_percent"] = None
             rows["Attempts"].append([a[k] for k in rows["Attempts"][0]])
+            summary = participants[a["participant_id"]]
+            summary["progress"] = a["progress"]
+            summary["actual_attempts"] += 1
+            summary["total_play_time_seconds"] += a["duration_seconds"]
+            summary["total_damage_taken"] += a["damage_taken"]
+            summary["last_result"] = a["result"]
             parameters = {p["pattern_id"]: p for p in a["difficulty"]["patterns"]}
             for p in a["pattern_stats"]:
                 rows["PatternStats"].append([
@@ -32,10 +60,16 @@ def snapshot(store):
         for row in db.execute("SELECT payload FROM surveys ORDER BY participant_id"):
             s = json.loads(row[0])
             scores = s["scores"]
+            if len(scores) == 1:
+                if s["cleared"]:
+                    participants[s["participant_id"]]["star_rating"] = scores[0]
+                else:
+                    scores = []
             a, i, d, f, r, x = scores + [None] * (6 - len(scores))
             rows["Surveys"].append([
                 s["participant_id"], s["cleared"], s["actual_attempts"], a, i, f, x, r, d, s["skipped"],
             ])
+    rows["Participants"].extend([p[k] for k in rows["Participants"][0]] for p in participants.values())
     return revision, rows
 
 
@@ -84,13 +118,14 @@ class SheetsMirror:
         self.store = store
         self.spreadsheet_id = spreadsheet_id
         self.interval = interval
+        self.synced = False
         self.stop = Event()
         self.thread = Thread(target=self.run, name="sheets-mirror", daemon=True)
 
     def sync(self, session):
         with self.store.connection() as db:
             state = db.execute("SELECT * FROM mirror_state WHERE id=1").fetchone()
-        if state["destination"] == self.spreadsheet_id and state["revision"] == state["synced_revision"]:
+        if self.synced and state["destination"] == self.spreadsheet_id and state["revision"] == state["synced_revision"]:
             return
 
         revision, rows = snapshot(self.store)
@@ -102,6 +137,7 @@ class SheetsMirror:
         response.raise_for_status()
         with self.store.connection(write=True) as db:
             db.execute("UPDATE mirror_state SET synced_revision=?, destination=? WHERE id=1", (revision, self.spreadsheet_id))
+        self.synced = True
         log.info("Sheets synced revision %d", revision)
 
     def run(self):

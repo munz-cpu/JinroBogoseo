@@ -86,7 +86,7 @@ class Store:
             return assignment
 
     def submit(self, payload, token, *, survey=False):
-        data = payload.model_dump(mode="json")
+        data = payload.model_dump(mode="json", exclude_unset=True)
         pid = data["participant_id"]
         encoded = json.dumps(data, ensure_ascii=False, sort_keys=True)
         with self.connection(write=True) as db:

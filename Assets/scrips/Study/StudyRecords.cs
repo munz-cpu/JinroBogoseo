@@ -70,6 +70,8 @@ namespace BossTemplate
         public string started_at, ended_at, result;
         public int attempt_number, target_attempts;
         public float duration_seconds, damage_taken, damage_dealt, boss_hp_remaining = 1;
+        public int boss_phase;
+        public float phase_progress_percent;
         public bool cleared;
         public PatternStat[] pattern_stats;
         public DifficultySnapshot difficulty;

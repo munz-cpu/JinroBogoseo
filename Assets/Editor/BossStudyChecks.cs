@@ -6,7 +6,9 @@ using System.Reflection;
 using BossTemplate;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 
 [InitializeOnLoad]
 internal static class BossStudyChecks
@@ -67,7 +69,7 @@ internal static class BossStudyChecks
             if (current is IEnumerator nested) stack.Push(nested);
             else yield return current;
         }
-        Report("PASS: start → intro → game → review, one session, consent gate, assignment, UUID reload, early victory, offline retry, rating, withdrawal");
+        Report("PASS: start → intro → game → review, consent, assignment, UUID reload, early victory, offline retry, rating, new study, withdrawal");
     }
 
     private static void Report(string result)
@@ -94,7 +96,8 @@ internal static class BossStudyChecks
         settings.protocol.apiUrl = Endpoint;
         settings.protocol.contact = "Smoke test only";
         settings.protocol.retention = "Smoke test only";
-        var storage = new StudyStorage(Path.Combine(Application.temporaryCachePath, "BossStudySmoke-" + Guid.NewGuid().ToString("N")));
+        var storagePath = Path.Combine(Application.temporaryCachePath, "BossStudySmoke-" + Guid.NewGuid().ToString("N"));
+        var storage = new StudyStorage(storagePath);
         ReplacePrivate(study, "storage", storage);
         ReplacePrivate(study, "asset", settings);
 
@@ -139,11 +142,49 @@ internal static class BossStudyChecks
         Check(saved.pending.Count == 1 && saved.recent[0].cleared && saved.recent[0].attempt_number == 1, "Durable attempt record");
         Check(saved.recent[0].pattern_stats[(int)BossPattern.dash].average_damage == 6, "Measured pattern damage");
         Check(saved.recent[0].damage_dealt > 0 && saved.recent[0].boss_hp_remaining == 0, "Both boss phases recorded");
+        Check(saved.recent[0].boss_phase == 2 && saved.recent[0].phase_progress_percent == 100, "Cleared phase progress");
         yield return Until(() => study.SyncStatus.Length > 0, "Offline attempt transmission");
         study.Protocol.apiUrl = Endpoint;
         yield return Until(() => !study.HasPending, "Automatic retry after connectivity returns");
-        study.SubmitRating(5);
+        var review = UnityEngine.Object.FindAnyObjectByType<StudyPanel>();
+        var ratings = new SerializedObject(review).FindProperty("ratings");
+        Check(ratings.arraySize == 5, "Five star ratings");
+        var stars = new Image[ratings.arraySize];
+        var buttons = new StudyRatingButton[ratings.arraySize];
+        for (int i = 0; i < ratings.arraySize; i++)
+        {
+            buttons[i] = (StudyRatingButton)ratings.GetArrayElementAtIndex(i).objectReferenceValue;
+            stars[i] = (Image)new SerializedObject(buttons[i]).FindProperty("star").objectReferenceValue;
+            Check(stars[i] && stars[i].sprite, "Imported star sprite");
+        }
+        var pointer = new PointerEventData(EventSystem.current) { button = PointerEventData.InputButton.Left };
+        buttons[2].OnPointerEnter(pointer);
+        Check(stars[0].color.a == stars[2].color.a && stars[2].color.a > stars[3].color.a,
+            "Hover previews the first three stars");
+        buttons[2].OnPointerExit(pointer);
+        Check(stars[0].color.a == stars[2].color.a && stars[2].color.a == stars[3].color.a,
+            "Pointer exit clears the preview");
+        buttons[4].OnPointerClick(pointer);
+        yield return Until(() => stars[4].color.a == 1 && stars[4].rectTransform.localScale.x > 1,
+            "Click expands the selected star");
         yield return Until(() => study.Screen == StudyScreen.Debrief && !study.HasPending, "Persist rating on real FastAPI");
+        var replay = Array.Find(review.GetComponentsInChildren<UnityEngine.UI.Button>(),
+            button => button.name == "다시 하기");
+        Check(replay && replay.interactable, "Replay should be available after sync");
+        replay.onClick.Invoke();
+        yield return Until(() => study.Screen == StudyScreen.Consent && SceneManager.GetActiveScene().path == StudySceneEntry.IntroPath,
+            "Replay should open consent for a new study");
+        saved = storage.Load();
+        Check(saved.participant == null && saved.attempts == 0 &&
+            File.Exists(Path.Combine(storagePath, "completed-studies", participant + ".json")),
+            "Replay should archive the completed study and reset the current registration");
+        study.Enroll();
+        yield return Until(() => study.Screen == StudyScreen.Ready && SceneManager.GetActiveScene().path == StudySceneEntry.GamePath,
+            "Replay should register and start a new study");
+        Check(study.ParticipantId != participant, "Replay must have a fresh participant identity");
+        study.StopStudy();
+        yield return Until(() => study.Screen == StudyScreen.Debrief && SceneManager.GetActiveScene().path == StudySceneEntry.ReviewPath
+            && !study.HasPending, "Stopping without a clear should sync and open the debrief directly");
         study.Withdraw();
         yield return Until(() => study.Screen == StudyScreen.Withdrawal && !study.WithdrawalPending, "Confirmed withdrawal");
         saved = storage.Load();
@@ -172,25 +213,49 @@ internal static class BossStudyChecks
     private static void ValidateDda()
     {
         var protocol = AssetDatabase.LoadAssetAtPath<StudySettings>(SettingsPath).protocol;
-        var profiles = new StudyProtocol();
         var history = new List<AttemptRecord>();
         const string now = "2026-01-01T00:00:00Z";
-        var initial = AdaptiveDifficulty.Choose(profiles, history, 1, 7, now, out _);
-        history.Add(Defeat(initial, .05f, 140, 25));
-        var far = AdaptiveDifficulty.Choose(profiles, history, 2, 7, now, out var increase);
-        var near = AdaptiveDifficulty.Choose(profiles, history, 2, 3, now, out var decrease);
-        Check(far.level > initial.level && increase.reason == "ahead_of_target", "DDA should raise pressure on a close early loss");
-        Check(near.level < initial.level && decrease.reason == "near_target", "DDA should ease near the target");
-        Check(Mathf.Abs(far.level - initial.level) <= profiles.maximumStep + 1e-6f, "DDA step limit");
-        history[0] = Defeat(initial, .95f, 6, 100);
-        var easier = AdaptiveDifficulty.Choose(profiles, history, 2, 12, now, out _);
-        Check(easier.level < initial.level, "DDA should ease for a struggling player far from target");
+        var profiles = new StudyProtocol();
+        foreach (int target in new[] { 3, 7, 12, 20 })
+        {
+            var first = AdaptiveDifficulty.Choose(profiles, history, 1, target, now, out _);
+            var before = AdaptiveDifficulty.Choose(profiles, history, target - 2, target, now, out _);
+            var near = AdaptiveDifficulty.Choose(profiles, history, target, target, now, out var change);
+            var after = AdaptiveDifficulty.Choose(profiles, history, target + 3, target, now, out _);
+            var later = AdaptiveDifficulty.Choose(profiles, history, target + 8, target, now, out _);
+            Check(Mathf.Approximately(first.level, .90f) && first.level == before.level,
+                "Difficulty must start hard and stay high before the target window");
+            Check(before.level > near.level && near.level > after.level && change.reason == "near_target",
+                "The curve must ease through the target");
+            Check(Mathf.Approximately(after.level, .12f) && after.level == later.level,
+                "Difficulty must stay low after the target window");
+            Check(first.boss_health > after.boss_health && first.boss_health <= 1.12f && after.boss_health >= .94f,
+                "The level curve must adjust boss durability within the subtle range");
+            foreach (var profile in new[] { first, near, after })
+                foreach (var pattern in profile.patterns)
+                    Check(pattern.speed == 1 && pattern.interval == 1 && pattern.hitbox == 1 && pattern.damage == 1,
+                        "Difficulty must keep foreground attack timing, collision and damage consistent");
+            Check(AdaptiveDifficulty.SupportRainChance(first.level) > AdaptiveDifficulty.SupportRainChance(after.level)
+                && ArenaBoss.RockRainRepeatDelay(first.ParametersFor(BossPattern.rock_rain))
+                    < ArenaBoss.RockRainRepeatDelay(after.ParametersFor(BossPattern.rock_rain)),
+                "Higher difficulty must increase overlap in both phases");
+        }
+        var initial = AdaptiveDifficulty.Choose(profiles, history, 1, 12, now, out _);
+        var baseline = AdaptiveDifficulty.Choose(profiles, history, 12, 12, now, out _);
+        history.Add(Defeat(initial, .95f, 6, 100));
         Array.Resize(ref history[0].pattern_stats, (int)BossPattern.fist_jab);
-        var upgraded = AdaptiveDifficulty.Choose(profiles, history, 2, 12, now, out _);
+        var upgraded = AdaptiveDifficulty.Choose(profiles, history, 12, 12, now, out _);
         Check(upgraded.patterns.Length == AdaptiveDifficulty.Patterns.Length
             && upgraded.patterns[(int)BossPattern.fist_double_slam].pattern_id == nameof(BossPattern.fist_double_slam),
             "Older attempt records must work with the expanded pattern list");
-        var report = new List<string> { "PASS: five DDA checks. Synthetic play model, seed 315." };
+        Check(upgraded.level == baseline.level && upgraded.patterns[0].selection_weight < baseline.patterns[0].selection_weight,
+            "Past damage must still affect pattern weights without moving the base curve");
+        var fixedFirst = AdaptiveDifficulty.Choose(profiles, Array.Empty<AttemptRecord>(), 1, 12, now, out _, fixedHard: true);
+        var fixedLater = AdaptiveDifficulty.Choose(profiles, history, 13, 12, now, out var fixedChange, fixedHard: true);
+        Check(fixedFirst.level == profiles.maximumLevel && fixedChange.reason == "fixed_hard"
+            && JsonUtility.ToJson(fixedFirst) == JsonUtility.ToJson(fixedLater),
+            "The fixed-hard group must keep the same profile after a defeat or reaching the target");
+        var report = new List<string> { "PASS: goal curves for 3, 7, 12, and 20 attempts, subtle durability, fixed attack timings, support rain, legacy history, pattern weights, and fixed hard. Synthetic play model, seed 315." };
         var rng = new System.Random(315);
         foreach (int target in new[] { 3, 7, 12 })
         foreach (float skill in new[] { .25f, .5f, .75f })

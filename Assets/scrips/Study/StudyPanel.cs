@@ -15,10 +15,8 @@ namespace BossTemplate
         [SerializeField] private Text readyTitle, attemptLabel;
         [SerializeField] private Button attempt;
         [SerializeField] private Text ratingTitle, debrief, participant, contact, withdrawalMessage;
-        [SerializeField] private Font menuFont;
-        [SerializeField] private GameObject menuBackground;
+        [SerializeField] private StudyMainMenu mainMenu;
         [SerializeField] private GameObject studyBackdrop;
-        [SerializeField] private Sprite menuGolem;
         [SerializeField] private Sprite victoryStar;
         [SerializeField] private StudyRatingButton[] ratings;
         [SerializeField] private Button skipRating, withdraw, retry, replay;
@@ -30,18 +28,12 @@ namespace BossTemplate
         private bool submittingRating;
         private StudyPauseMenu pauseMenu;
         private StudyVictoryPanel victoryPanel;
-        private StudyMainMenu mainMenu;
         internal bool HasVictoryPanel => victoryPanel != null;
 
         internal void Bind(StudySession owner, Font font)
         {
             session = owner;
-            if (menuGolem && menuBackground)
-            {
-                mainMenu = new StudyMainMenu((RectTransform)transform, menuFont ? menuFont : consentNotice.font,
-                    font && !useSceneFonts ? font : consentNotice.font, menuBackground, menuGolem, session);
-                screens[(int)StudyScreen.Title] = mainMenu.Root.gameObject;
-            }
+            if (mainMenu) mainMenu.Bind(owner);
             if (victoryStar)
             {
                 victoryPanel = new StudyVictoryPanel((RectTransform)transform, font && !useSceneFonts ? font : readyTitle.font, victoryStar);
@@ -85,13 +77,11 @@ namespace BossTemplate
             if (mainMenu == null) return;
             if (session.Screen == StudyScreen.Title)
             {
-                mainMenu.Update();
+                mainMenu.AnimateParallax();
                 if (escape) mainMenu.CloseDetails();
             }
             else if (escape) session.BackToTitle();
         }
-
-        private void OnDestroy() => mainMenu?.Destroy();
 
         internal void ShowPause(bool paused)
         {

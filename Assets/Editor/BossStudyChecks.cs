@@ -28,6 +28,8 @@ internal static class BossStudyChecks
         if (EditorApplication.isPlayingOrWillChangePlaymode
             || SceneManager.GetActiveScene().path != StudySceneEntry.IntroPath)
             throw new InvalidOperationException("Open BossStudyIntro in Edit Mode before running the study smoke test.");
+        Check(UnityEngine.Object.FindAnyObjectByType<StudyMainMenu>(FindObjectsInactive.Include)
+            && GameObject.Find("메뉴 전투 배경"), "The menu and background must already exist in Edit Mode");
         if (File.Exists(Path.Combine(Application.persistentDataPath, "boss-study-v1.json")))
             throw new InvalidOperationException("Use a test editor profile without existing study data.");
         File.WriteAllText(ReportPath, "RUNNING");
@@ -110,6 +112,8 @@ internal static class BossStudyChecks
             "The menu uses the same background material as the arena");
         var golem = (RectTransform)menu.Find("골렘");
         Check(golem.GetComponent<Image>().sprite, "Golem sprite is linked");
+        float initialSkyY = sky.localPosition.y;
+        float initialGolemY = golem.anchoredPosition.y;
         var mouse = InputSystem.AddDevice<Mouse>();
         try
         {
@@ -120,6 +124,12 @@ internal static class BossStudyChecks
             float worldPerUi = Camera.main.orthographicSize * 2 / menuBounds.height;
             Check(sky.localPosition.x > 0 && golem.anchoredPosition.x * worldPerUi > sky.localPosition.x * 4,
                 "Mouse parallax moves the foreground farther than the sky");
+            InputState.Change(mouse, new MouseState { position = new Vector2(Screen.width * .95f, Screen.height * .12f) },
+                InputUpdateType.Dynamic);
+            yield return new WaitForSecondsRealtime(.2f);
+            Check(Mathf.Approximately(sky.localPosition.y, initialSkyY)
+                && Mathf.Approximately(golem.anchoredPosition.y, initialGolemY),
+                "Vertical mouse motion does not move the scenery or golem");
         }
         finally
         {

@@ -13,14 +13,17 @@ namespace BossTemplate
         [SerializeField] private Button start, enroll, decline, reopen, cancelRegistration;
         [SerializeField] private Text consentNotice, consentDetails;
         [SerializeField] private Text readyTitle, attemptLabel;
+        [SerializeField] private Font pauseDisplayFont;
         [SerializeField] private Button attempt;
         [SerializeField] private Text ratingTitle, debrief, participant, contact, withdrawalMessage;
         [SerializeField] private StudyMainMenu mainMenu;
         [SerializeField] private RectTransform consentContent, waitingContent, declinedContent;
+        [SerializeField] private RectTransform surveyContent, debriefContent;
         [SerializeField] private GameObject studyBackdrop;
         [SerializeField] private GameObject debriefScenery;
         [SerializeField] private ScrollRect debriefScroll;
         [SerializeField] private Sprite victoryStar;
+        [SerializeField] private Texture victoryShade;
         [SerializeField] private StudyRatingButton[] ratings;
         [SerializeField] private Button skipRating, withdraw, retry, replay;
         [SerializeField] private Text status;
@@ -31,21 +34,30 @@ namespace BossTemplate
         private bool submittingRating;
         private StudyPauseMenu pauseMenu;
         private StudyVictoryPanel victoryPanel;
-        private StudySlideIn introSlide;
+        private StudySlideIn screenSlide;
         internal bool HasVictoryPanel => victoryPanel != null;
 
         internal void Bind(StudySession owner, Font font)
         {
             session = owner;
             if (mainMenu) mainMenu.Bind(owner);
+            StudyTextHover.Attach(consentContent);
+            StudyTextHover.Attach(waitingContent);
+            StudyTextHover.Attach(declinedContent);
+            StudyTextHover.Attach(debriefContent);
             if (victoryStar)
             {
-                victoryPanel = new StudyVictoryPanel((RectTransform)transform, font && !useSceneFonts ? font : readyTitle.font, victoryStar);
+                var reviewFont = pauseDisplayFont ? pauseDisplayFont : font && !useSceneFonts ? font : readyTitle.font;
+                var authoredSurvey = screens[(int)StudyScreen.Survey];
+                if (authoredSurvey) authoredSurvey.SetActive(false);
+                victoryPanel = new StudyVictoryPanel((RectTransform)transform, reviewFont, victoryStar, victoryShade);
                 screens[(int)StudyScreen.Survey] = victoryPanel.Root.gameObject;
+                surveyContent = victoryPanel.Content;
                 ratingTitle = victoryPanel.Title;
                 ratings = victoryPanel.Ratings;
                 skipRating = victoryPanel.Skip;
             }
+            StudyTextHover.Attach(surveyContent);
             foreach (var screen in screens)
                 if (screen) screen.SetActive(false);
             if (font && !useSceneFonts)
@@ -76,13 +88,14 @@ namespace BossTemplate
         private void Update()
         {
             if (!session) return;
-            introSlide?.Advance();
+            screenSlide?.Advance();
             var keyboard = Keyboard.current;
             bool escape = keyboard?.escapeKey.wasPressedThisFrame == true;
             if (attempt && escape) session.TogglePause();
             else if (session.Screen == StudyScreen.Defeat && keyboard != null
                 && (keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame))
                 session.BeginAttempt();
+            pauseMenu?.Advance();
             if (mainMenu == null) return;
             if (session.Screen == StudyScreen.Title)
             {
@@ -96,7 +109,8 @@ namespace BossTemplate
         {
             if (paused)
             {
-                pauseMenu ??= new StudyPauseMenu((RectTransform)transform, readyTitle.font, session);
+                pauseMenu ??= new StudyPauseMenu((RectTransform)transform,
+                    pauseDisplayFont ? pauseDisplayFont : readyTitle.font, readyTitle.font, session);
                 pauseMenu.Open(session.Deaths);
             }
             else pauseMenu?.Close();
@@ -104,11 +118,11 @@ namespace BossTemplate
 
         internal void Render(StudyScreen screen)
         {
-            introSlide?.Finish();
-            introSlide = null;
+            screenSlide?.Finish();
+            screenSlide = null;
             if (activeScreen) activeScreen.SetActive(false);
             mainMenu?.SetSceneryVisible(screen == StudyScreen.Title);
-            bool showDebriefScenery = debriefScenery && screen == StudyScreen.Debrief;
+            bool showDebriefScenery = debriefScenery && (screen is StudyScreen.Debrief or StudyScreen.Survey);
             if (debriefScenery) debriefScenery.SetActive(showDebriefScenery);
             if (studyBackdrop) studyBackdrop.SetActive(screen != StudyScreen.Title && !showDebriefScenery);
             activeScreen = screens[(int)(screen == StudyScreen.Defeat ? StudyScreen.Combat : screen)];
@@ -158,18 +172,20 @@ namespace BossTemplate
             activeScreen.SetActive(true);
             var back = mainMenu?.ShowBack(screen is StudyScreen.Consent or StudyScreen.Waiting or StudyScreen.Declined);
             if (screen == StudyScreen.Title) mainMenu?.Show();
-            var introContent = screen switch
+            var slideContent = screen switch
             {
                 StudyScreen.Consent => consentContent,
                 StudyScreen.Waiting => waitingContent,
                 StudyScreen.Declined => declinedContent,
+                StudyScreen.Survey => surveyContent,
+                StudyScreen.Debrief => debriefContent,
                 _ => null
             };
-            if (introContent)
+            if (slideContent)
             {
-                introSlide = new StudySlideIn((RectTransform)transform, introContent, back);
-                introSlide.Restart();
-                introSlide.Advance();
+                screenSlide = new StudySlideIn((RectTransform)transform, slideContent, back);
+                screenSlide.Restart();
+                screenSlide.Advance();
             }
             var scroll = screen == StudyScreen.Debrief && debriefScroll ? debriefScroll : activeScreen.GetComponent<ScrollRect>();
             if (scroll)

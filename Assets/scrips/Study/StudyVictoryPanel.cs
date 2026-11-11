@@ -5,54 +5,70 @@ namespace BossTemplate
 {
     internal sealed class StudyVictoryPanel
     {
-        private static readonly Color Gold = new Color(.97f, .76f, .40f);
-        private static readonly Color Cream = new Color(1, .94f, .80f);
-        private static readonly Color Surface = new Color(.20f, .15f, .12f);
-        private static readonly Vector2 Size = new Vector2(414, 226);
+        private static readonly Color Accent = new Color32(250, 201, 150, 255);
+        private static readonly Color Ink = new Color32(245, 240, 232, 255);
+        private static readonly Vector2 Size = new Vector2(356, 310);
 
         internal RectTransform Root { get; }
+        internal RectTransform Content { get; }
         internal Text Title { get; }
         internal StudyRatingButton[] Ratings { get; } = new StudyRatingButton[5];
         internal Button Skip { get; }
 
-        internal StudyVictoryPanel(RectTransform parent, Font font, Sprite star)
+        internal StudyVictoryPanel(RectTransform parent, Font font, Sprite star, Texture shade)
         {
-            Root = Rect(parent, "승리 및 별점", Vector2.zero, Size);
-            Root.anchorMin = Root.anchorMax = new Vector2(.5f, .30f);
-            Image(Root, "그림자", new Vector2(0, -6), Size, new Color(0, 0, 0, .44f));
-            Image(Root, "테두리", Vector2.zero, Size, Gold);
-            Image(Root, "카드", Vector2.zero, Size - Vector2.one * 4, new Color(.095f, .067f, .052f));
+            Root = Rect(parent, "승리 및 별점", Vector2.zero, Vector2.zero);
+            Root.anchorMin = Vector2.zero;
+            Root.anchorMax = Vector2.one;
+            var backdrop = Root.gameObject.AddComponent<RawImage>();
+            backdrop.texture = shade;
+            backdrop.color = shade ? Color.white : new Color(.055f, .07f, .06f, .78f);
 
-            Title = Label(Root, "보스전 승리", font, 36, 71, Gold);
-            Title.fontStyle = FontStyle.Bold;
-            Label(Root, "보스전에서 느낀 성취감", font, 18, 33, Cream);
+            Content = Rect(Root, "평가 항목", Vector2.zero, Size);
+            Content.anchorMin = Content.anchorMax = new Vector2(.085f, .46f);
+            Content.pivot = new Vector2(0, .5f);
+            Title = LeftLabel(Content, "보스전 승리", font, 57, 109);
+            Image(Content, "제목 강조선", new Vector2(-150, 66), new Vector2(56, 3), Accent);
+            LeftLabel(Content, "보스전에서 느낀 성취감", font, 20, 29);
+
+            var row = Rect(Content, "별점 선택", new Vector2(0, -30), new Vector2(Size.x, 62));
 
             for (int i = 0; i < Ratings.Length; i++)
             {
-                var tile = Image(Root, $"{i + 1}점", new Vector2((i - 2) * 64, -17), new Vector2(57, 62), Surface);
-                tile.raycastTarget = true;
-                var icon = Image(tile.rectTransform, "별", new Vector2(0, 6), new Vector2(31, 31), Color.white);
+                var hitArea = Image(row, $"{i + 1}점", new Vector2(-150 + i * 61, 0), new Vector2(56, 62), Color.clear);
+                hitArea.raycastTarget = true;
+                var icon = Image(hitArea.rectTransform, "별", new Vector2(0, 6), new Vector2(35, 35), Color.white);
                 icon.sprite = star;
                 icon.preserveAspect = true;
-                Label(tile.rectTransform, (i + 1).ToString(), font, 13, -19, Cream);
-                var button = tile.gameObject.AddComponent<StudyRatingButton>();
-                button.targetGraphic = tile;
+                var number = Label(hitArea.rectTransform, (i + 1).ToString(), font, 13, -19, Ink);
+                var button = hitArea.gameObject.AddComponent<StudyRatingButton>();
+                button.targetGraphic = number;
+                ApplyMenuColors(button);
                 button.BindStar(icon);
                 Ratings[i] = button;
             }
 
-            var skip = Image(Root, "별점 건너뛰기", new Vector2(0, -78), new Vector2(158, 37), Surface);
+            var skip = Image(Content, "별점 건너뛰기", new Vector2(-73, -94), new Vector2(210, 44), Color.clear);
             skip.raycastTarget = true;
-            Label(skip.rectTransform, "별점 건너뛰기", font, 16, 0, Cream);
             Skip = skip.gameObject.AddComponent<Button>();
-            Skip.targetGraphic = skip;
+            Skip.targetGraphic = LeftLabel(skip.rectTransform, "별점 건너뛰기", font, 21, 0);
+            ApplyMenuColors(Skip);
         }
 
         internal void Fit()
         {
             var available = ((RectTransform)Root.parent).rect;
-            Root.localScale = Vector3.one * Mathf.Min(1, available.width / 450, available.height / 420);
+            Content.localScale = Vector3.one * Mathf.Min(1, available.width / 520, available.height / 410);
             Root.SetAsLastSibling();
+        }
+
+        private static void ApplyMenuColors(Selectable selectable)
+        {
+            ColorBlock colors = selectable.colors;
+            colors.highlightedColor = colors.selectedColor = Accent;
+            colors.pressedColor = new Color(.73f, .53f, .37f);
+            colors.fadeDuration = .13f;
+            selectable.colors = colors;
         }
 
         private static Image Image(RectTransform parent, string name, Vector2 position, Vector2 size, Color color)
@@ -73,6 +89,14 @@ namespace BossTemplate
             text.color = color;
             text.alignment = TextAnchor.MiddleCenter;
             text.raycastTarget = false;
+            return text;
+        }
+
+        private static Text LeftLabel(RectTransform parent, string title, Font font, int size, float y)
+        {
+            var text = Label(parent, title, font, size, y, Ink);
+            text.rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, Mathf.Max(42, size * 1.4f));
+            text.alignment = TextAnchor.MiddleLeft;
             return text;
         }
 

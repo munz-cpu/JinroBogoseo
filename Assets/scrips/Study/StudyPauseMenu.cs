@@ -7,14 +7,17 @@ namespace BossTemplate
     internal sealed class StudyPauseMenu
     {
         private const string VolumeKey = "boss-study-master-volume";
-        private static readonly Color PanelColor = new Color(.065f, .09f, .08f);
-        private static readonly Color Surface = new Color(.14f, .20f, .17f);
-        private static readonly Color Accent = new Color(.77f, .91f, .81f);
-        private readonly RectTransform overlay, card;
-        private readonly Font font;
-        private readonly Text deaths;
+        private static readonly Color Scrim = new Color32(17, 23, 20, 211);
+        private static readonly Color Surface = new Color32(50, 66, 58, 255);
+        private static readonly Color Ink = new Color32(245, 240, 232, 255);
+        private static readonly Color Muted = new Color32(177, 193, 182, 255);
+        private static readonly Color Accent = new Color32(250, 201, 150, 255);
+        private readonly RectTransform overlay, content;
+        private readonly Font displayFont;
+        private readonly Text deaths, volumeLabel;
         private readonly Button resume;
         private readonly Slider volume;
+        private readonly StudySlideIn slide;
         private GameObject previousSelection;
 
         internal static void LoadVolume() =>
@@ -27,70 +30,87 @@ namespace BossTemplate
             PlayerPrefs.Save();
         }
 
-        internal StudyPauseMenu(RectTransform parent, Font font, StudySession session)
+        internal StudyPauseMenu(RectTransform parent, Font displayFont, Font bodyFont, StudySession session)
         {
-            this.font = font;
+            this.displayFont = displayFont;
             overlay = Rect(parent, "일시정지 메뉴", Vector2.zero, Vector2.zero);
             overlay.anchorMin = Vector2.zero;
             overlay.anchorMax = Vector2.one;
-            overlay.gameObject.AddComponent<Image>().color = new Color(0, 0, 0, .68f);
-            card = Rect(overlay, "메뉴 패널", Vector2.zero, new Vector2(448, 390));
-            card.gameObject.AddComponent<Image>().color = PanelColor;
+            overlay.gameObject.AddComponent<Image>().color = Scrim;
+            content = Rect(overlay, "일시정지 항목", Vector2.zero, new Vector2(332, 384));
+            content.anchorMin = content.anchorMax = new Vector2(.085f, .5f);
+            content.pivot = new Vector2(0, .5f);
 
-            Label(card, "일시정지", 34, 147, Accent);
-            var volumeLabel = Label(card, "음량", 22, 76, Color.white);
-            volume = CreateVolumeSlider(card, new Vector2(0, 38), Surface, Accent);
-            void UpdateVolume(float value)
-            {
-                AudioListener.volume = value;
-                volumeLabel.text = $"음량  {Mathf.RoundToInt(value * 100)}%";
-            }
-            UpdateVolume(AudioListener.volume);
-            volume.onValueChanged.AddListener(UpdateVolume);
-            deaths = Label(card, "죽은 횟수", 22, -19, Color.white);
-            var menu = CreateButton("메뉴로 돌아가기", -82, Surface, Color.white);
-            menu.onClick.AddListener(session.ReturnToMenu);
-            resume = CreateButton("게임으로 돌아가기", -144, Accent, PanelColor);
+            Label(content, "일시정지", displayFont, 62, 144, Ink);
+            var rule = Rect(content, "제목 밑줄", new Vector2(-138, 95), new Vector2(56, 3));
+            var ruleImage = rule.gameObject.AddComponent<Image>();
+            ruleImage.color = Accent;
+            ruleImage.raycastTarget = false;
+
+            resume = CreateButton("게임으로 돌아가기", 43, 29, Ink);
             resume.onClick.AddListener(session.TogglePause);
-            SetNavigation(volume, resume, menu);
-            SetNavigation(menu, volume, resume);
-            SetNavigation(resume, menu, volume);
+            var menu = CreateButton("메뉴로 돌아가기", -8, 23, Muted);
+            menu.onClick.AddListener(session.ReturnToMenu);
+
+            volumeLabel = Label(content, "음량", bodyFont, 18, -91, Ink);
+            volume = CreateVolumeSlider(content, new Vector2(0, -120), Surface, Accent);
+            volume.onValueChanged.AddListener(SetVolume);
+            deaths = Label(content, "죽은 횟수", bodyFont, 18, -169, Muted);
+
+            SetNavigation(resume, volume, menu);
+            SetNavigation(menu, resume, volume);
+            SetNavigation(volume, menu, resume);
+            slide = new StudySlideIn(overlay, content);
+            StudyTextHover.Attach(content);
             overlay.gameObject.SetActive(false);
         }
 
         internal void Open(int count)
         {
             var available = ((RectTransform)overlay.parent).rect;
-            card.localScale = Vector3.one * Mathf.Min(1, available.width / 480, available.height / 420);
+            content.localScale = Vector3.one * Mathf.Min(1, available.width / 480, available.height / 440);
             deaths.text = $"죽은 횟수  {count}회";
             volume.SetValueWithoutNotify(AudioListener.volume);
+            SetVolume(AudioListener.volume);
             overlay.SetAsLastSibling();
             var events = EventSystem.current;
             previousSelection = events ? events.currentSelectedGameObject : null;
             overlay.gameObject.SetActive(true);
+            slide.Restart();
+            slide.Advance();
             if (events) events.SetSelectedGameObject(resume.gameObject);
         }
+
+        internal void Advance() => slide.Advance();
 
         internal void Close()
         {
             SaveVolume(volume.value);
             overlay.gameObject.SetActive(false);
+            slide.Finish();
             var events = EventSystem.current;
             if (events)
                 events.SetSelectedGameObject(previousSelection && previousSelection.activeInHierarchy ? previousSelection : null);
         }
 
-        internal static Slider CreateVolumeSlider(RectTransform parent, Vector2 position, Color surface, Color accent)
+        private void SetVolume(float value)
+        {
+            AudioListener.volume = value;
+            volumeLabel.text = $"음량  {Mathf.RoundToInt(value * 100)}%";
+        }
+
+        private static Slider CreateVolumeSlider(RectTransform parent, Vector2 position, Color surface, Color accent)
         {
             var area = Rect(parent, "음량 조절", position, new Vector2(332, 40));
-            var track = Rect(area, "Track", Vector2.zero, new Vector2(312, 8));
+            var track = Rect(area, "Track", Vector2.left * 10, new Vector2(312, 3));
             track.gameObject.AddComponent<Image>().color = surface;
             var fill = Rect(track, "Fill", Vector2.zero, Vector2.zero);
             fill.anchorMin = Vector2.zero;
             fill.anchorMax = Vector2.one;
             fill.gameObject.AddComponent<Image>().color = accent;
-            var travel = Rect(area, "Handle Area", Vector2.zero, new Vector2(312, 20));
-            var handle = Rect(travel, "Handle", Vector2.zero, new Vector2(20, 20));
+            var travel = Rect(area, "Handle Area", Vector2.left * 10, new Vector2(312, 20));
+            var handle = Rect(travel, "Handle", Vector2.zero, new Vector2(11, 11));
+            handle.localRotation = Quaternion.Euler(0, 0, 45);
             var handleImage = handle.gameObject.AddComponent<Image>();
             handleImage.color = accent;
             area.gameObject.AddComponent<Image>().color = Color.clear;
@@ -102,14 +122,18 @@ namespace BossTemplate
             return slider;
         }
 
-        private Button CreateButton(string title, float y, Color background, Color foreground)
+        private Button CreateButton(string title, float y, int size, Color foreground)
         {
-            var rect = Rect(card, title, new Vector2(0, y), new Vector2(332, 48));
-            var image = rect.gameObject.AddComponent<Image>();
-            image.color = background;
+            var rect = Rect(content, title, new Vector2(0, y), new Vector2(332, 48));
+            rect.gameObject.AddComponent<Image>().color = Color.clear;
             var button = rect.gameObject.AddComponent<Button>();
-            button.targetGraphic = image;
-            Label(rect, title, 22, 0, foreground);
+            button.targetGraphic = Label(rect, title, displayFont, size, 0, Color.white);
+            var colors = button.colors;
+            colors.normalColor = foreground;
+            colors.highlightedColor = Accent;
+            colors.selectedColor = Accent;
+            colors.pressedColor = Ink;
+            button.colors = colors;
             return button;
         }
 
@@ -119,14 +143,14 @@ namespace BossTemplate
                 mode = Navigation.Mode.Explicit, selectOnUp = above, selectOnDown = below
             };
 
-        private Text Label(RectTransform parent, string title, int size, float y, Color color)
+        private static Text Label(RectTransform parent, string title, Font font, int size, float y, Color color)
         {
-            var rect = Rect(parent, title, new Vector2(0, y), new Vector2(332, 52));
+            var rect = Rect(parent, title, new Vector2(0, y), new Vector2(332, Mathf.Max(52, size * 1.35f)));
             var text = rect.gameObject.AddComponent<Text>();
             text.font = font;
             text.text = title;
             text.fontSize = size;
-            text.alignment = TextAnchor.MiddleCenter;
+            text.alignment = TextAnchor.MiddleLeft;
             text.color = color;
             text.raycastTarget = false;
             return text;

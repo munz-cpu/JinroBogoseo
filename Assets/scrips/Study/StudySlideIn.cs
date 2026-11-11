@@ -6,7 +6,8 @@ namespace BossTemplate
     internal sealed class StudySlideIn
     {
         private const float Duration = .48f;
-        private const float Stagger = .055f;
+        private const float Stagger = .085f;
+        private const float DurationPerRow = .07f;
         private readonly RectTransform viewport, group;
         private readonly (RectTransform rect, Vector2 origin)[] items;
         private readonly float rightEdge, endTime;
@@ -31,7 +32,7 @@ namespace BossTemplate
                 Vector3 right = item.TransformPoint(new Vector3(item.rect.xMax, 0, 0));
                 rightEdge = Mathf.Max(rightEdge, group.InverseTransformPoint(right).x);
             }
-            endTime = Duration + (items.Length - 1) * Stagger;
+            endTime = Duration + (items.Length - 1) * (Stagger + DurationPerRow);
         }
 
         internal void Restart() => elapsed = 0;
@@ -52,7 +53,8 @@ namespace BossTemplate
             for (int i = 0; i < items.Length; i++)
             {
                 var (item, origin) = items[i];
-                float remaining = 1 - Mathf.Clamp01((elapsed - i * Stagger) / Duration);
+                float duration = Duration + i * DurationPerRow;
+                float remaining = 1 - Mathf.Clamp01((elapsed - i * Stagger) / duration);
                 Vector2 offset = item.parent.InverseTransformVector(travel);
                 item.anchoredPosition = origin + offset * (remaining * remaining * remaining);
             }

@@ -47,6 +47,8 @@ namespace BossTemplate
             navigationSlide = new StudySlideIn((RectTransform)transform, navigation);
             detailsScale = details.localScale;
             detailsAnchor = details.anchorMin;
+            StudyTextHover.Attach(transform);
+            StudyTextHover.Attach(backToMenu.transform);
 
             play.onClick.AddListener(session.OpenIntro);
             settings.onClick.AddListener(() => OpenDetails("설정", "", true));

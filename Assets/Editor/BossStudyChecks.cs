@@ -213,15 +213,25 @@ internal static class BossStudyChecks
         var hands = (SpriteRenderer[])typeof(ArenaBoss).GetField("battleFists", BindingFlags.Instance | BindingFlags.NonPublic)
             .GetValue(arena.Boss);
         var bossHealth = arena.Boss.Health;
-        arena.Player.Health.InvulnerableUntil = Time.time + 12;
+        arena.Player.Health.InvulnerableUntil = Time.time + 45;
         bossHealth.Hit(bossHealth.Maximum * .69f);
         yield return null;
         Check(hands[0].enabled && hands[1].enabled && !hands[2].enabled && !hands[3].enabled,
             "Phase two has two hands above the threshold");
         bossHealth.Hit(bossHealth.Maximum * .02f);
         yield return Until(() => hands[2].enabled && hands[3].enabled, "Two more hands spawn below 30 percent");
-        yield return Until(() => arena.Boss.Intent == "네 손 교차 내려찍기", "Four-hand slam attacks");
-        yield return Until(() => arena.Boss.Intent == "네 손 협공", "Four-hand pincer attacks");
+        var enrageAttacks = new (BossPattern pattern, string intent)[]
+        {
+            (BossPattern.fist_cross_slam, "네 손 교차 내려찍기"),
+            (BossPattern.fist_slam_chain, "연속 표적 내려찍기"),
+            (BossPattern.fist_pincer_combo, "네 손 협공"),
+            (BossPattern.fist_floor_wave, "낮은 양방향 쓸기"),
+            (BossPattern.fist_high_clap, "높은 박수"),
+            (BossPattern.fist_diagonal_rush, "엇갈린 대각선 돌진"),
+            (BossPattern.fist_rising_columns, "네 손 상승 기둥")
+        };
+        foreach (var attack in enrageAttacks)
+            yield return Until(() => arena.Boss.Intent == attack.intent, $"Enrage attack {attack.pattern}");
         arena.SkipCurrentPhase();
         yield return Until(() => study.Screen == StudyScreen.Survey && SceneManager.GetActiveScene().path == StudySceneEntry.GamePath,
             "Clearing the boss opens the rating panel in the game scene");
@@ -234,9 +244,9 @@ internal static class BossStudyChecks
         Check(saved.recent[0].pattern_stats[(int)BossPattern.dash].average_damage == 6, "Measured pattern damage");
         Check(saved.recent[0].damage_dealt > 0 && saved.recent[0].boss_hp_remaining == 0, "Both boss phases recorded");
         Check(saved.recent[0].boss_phase == 2 && saved.recent[0].phase_progress_percent == 100, "Cleared phase progress");
-        Check(saved.recent[0].pattern_stats[(int)BossPattern.fist_cross_slam].executions == 1
-            && saved.recent[0].pattern_stats[(int)BossPattern.fist_pincer_combo].executions == 1,
-            "Four-hand patterns are tracked independently");
+        foreach (var attack in enrageAttacks)
+            Check(saved.recent[0].pattern_stats[(int)attack.pattern].executions == 1,
+                $"Enrage attack {attack.pattern} is tracked independently");
         yield return Until(() => study.SyncStatus.Length > 0, "Offline attempt transmission");
         study.Protocol.apiUrl = Endpoint;
         yield return Until(() => !study.HasPending, "Automatic retry after connectivity returns");

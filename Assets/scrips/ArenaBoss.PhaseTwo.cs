@@ -10,6 +10,12 @@ namespace BossTemplate
         private const float HockeyWindupDuration = .26f;
         private const float HockeyHitstopDuration = .065f;
         private const float FourHandPairDelay = .62f;
+        private static readonly BossPattern[] EnragePatterns =
+        {
+            BossPattern.fist_cross_slam, BossPattern.fist_slam_chain, BossPattern.fist_pincer_combo,
+            BossPattern.fist_floor_wave, BossPattern.fist_high_clap, BossPattern.fist_diagonal_rush,
+            BossPattern.fist_rising_columns
+        };
         private readonly float[] hockeyStrikeTimes = new float[2];
         private float hockeyHitstopUntil;
         internal bool HockeyHitstopActive => Time.time < hockeyHitstopUntil;
@@ -60,13 +66,14 @@ namespace BossTemplate
 
             if (arena.Finished) yield break;
             yield return new WaitForSeconds(Mathf.Max(0, enragedAt + EnrageRevealDuration - Time.time));
-            BossPattern combo = BossPattern.fist_cross_slam;
+            int nextCombo = 0;
             while (!arena.Finished)
             {
+                BossPattern combo = EnragePatterns[nextCombo];
                 arena.Study?.Executed(combo);
                 yield return RunFistPattern(combo);
                 yield return new WaitForSeconds(.38f * arena.Parameters(combo).interval);
-                combo = combo == BossPattern.fist_cross_slam ? BossPattern.fist_pincer_combo : BossPattern.fist_cross_slam;
+                nextCombo = (nextCombo + 1) % EnragePatterns.Length;
             }
         }
 
@@ -105,6 +112,11 @@ namespace BossTemplate
             BossPattern.fist_double_slam => DoubleFistSlam(),
             BossPattern.fist_cross_slam => FourHandSlams(),
             BossPattern.fist_pincer_combo => FourHandPincer(),
+            BossPattern.fist_slam_chain => FourHandSlamChain(),
+            BossPattern.fist_floor_wave => FourHandHorizontal(high: false),
+            BossPattern.fist_high_clap => FourHandHorizontal(high: true),
+            BossPattern.fist_diagonal_rush => FourHandDiagonalRush(),
+            BossPattern.fist_rising_columns => FourHandRisingColumns(),
             _ => throw new System.ArgumentOutOfRangeException(nameof(pattern))
         };
 
@@ -505,22 +517,110 @@ namespace BossTemplate
             Vector2 half = battleFists[0].bounds.extents;
             float outer = half.x + 5.1f;
             float center = ClampPairedFistCenter(target.x, outer + half.x);
-            var sweep = StartCoroutine(PincerPair(0, center, outer, arena.GroundY + half.y, 0));
+            const string attack = "네 손 협공";
+            var sweep = StartCoroutine(PincerPair(0, center, outer, arena.GroundY + half.y, 0, pattern, attack, 31, 24));
             yield return new WaitForSeconds(FourHandPairDelay * arena.Parameters(pattern).interval);
             if (arena.Finished) yield break;
-            yield return PincerPair(2, center, outer, Mathf.Max(arena.GroundY + 5.2f, target.y), 2.1f);
+            yield return PincerPair(2, center, outer, Mathf.Max(arena.GroundY + 5.2f, target.y), 2.1f, pattern, attack, 31, 24);
             yield return sweep;
         }
 
-        private IEnumerator PincerPair(int first, float center, float outer, float targetY, float approachHeight)
+        private IEnumerator PincerPair(int first, float center, float outer, float targetY, float approachHeight,
+            BossPattern pattern, string attack, float speed, float damage)
         {
-            const BossPattern pattern = BossPattern.fist_pincer_combo;
-            const string attack = "네 손 협공";
             float inner = battleFists[first].bounds.extents.x * .75f;
             var left = StartCoroutine(StrikeFist(first, new Vector2(center - outer, targetY + approachHeight),
-                new Vector2(center - inner, targetY), pattern, attack, 31, 24));
+                new Vector2(center - inner, targetY), pattern, attack, speed, damage));
             yield return StrikeFist(first + 1, new Vector2(center + outer, targetY + approachHeight),
-                new Vector2(center + inner, targetY), pattern, attack, 31, 24);
+                new Vector2(center + inner, targetY), pattern, attack, speed, damage);
+            yield return left;
+        }
+
+        private IEnumerator FourHandSlamChain()
+        {
+            const BossPattern pattern = BossPattern.fist_slam_chain;
+            var strikes = new Coroutine[TotalFistCount];
+            float delay = .57f * arena.Parameters(pattern).interval;
+            for (int i = 0; i < strikes.Length; i++)
+            {
+                if (arena.Finished) yield break;
+                Vector2 target = PlayerPosition;
+                SpriteRenderer fist = battleFists[i];
+                float x = ClampFistX(target.x, fist);
+                float bottom = arena.GroundY + fist.bounds.extents.y;
+                var start = new Vector2(x, Mathf.Max(bottom + 6.5f, target.y + 4));
+                strikes[i] = StartCoroutine(StrikeFist(i, start, new Vector2(x, bottom),
+                    pattern, "연속 표적 내려찍기", 27, 19));
+                if (i + 1 < strikes.Length) yield return new WaitForSeconds(delay);
+            }
+            foreach (Coroutine strike in strikes) yield return strike;
+        }
+
+        private IEnumerator FourHandHorizontal(bool high)
+        {
+            BossPattern pattern = high ? BossPattern.fist_high_clap : BossPattern.fist_floor_wave;
+            string attack = high ? "높은 박수" : "낮은 양방향 쓸기";
+            Vector2 half = battleFists[0].bounds.extents;
+            float outer = half.x + 5.8f;
+            float center = ClampPairedFistCenter(PlayerPosition.x, outer + half.x);
+            float hitbox = arena.Parameters(pattern).hitbox;
+            float bottom = arena.GroundY + (high ? 1.45f : -half.y * .45f);
+            float firstY = bottom + half.y * hitbox;
+            float secondY = bottom + battleFists[2].bounds.extents.y * hitbox;
+            var first = StartCoroutine(PincerPair(0, center, outer, firstY, 0, pattern, attack, 23, 19));
+            yield return new WaitForSeconds(.78f * arena.Parameters(pattern).interval);
+            yield return PincerPair(2, center, outer, secondY, 0, pattern, attack, 23, 19);
+            yield return first;
+        }
+
+        private IEnumerator FourHandDiagonalRush()
+        {
+            const BossPattern pattern = BossPattern.fist_diagonal_rush;
+            float outer = battleFists[0].bounds.extents.x + 6f;
+            float center = ClampPairedFistCenter(PlayerPosition.x, outer + battleFists[0].bounds.extents.x);
+            var first = StartCoroutine(DiagonalPair(0, center, outer, leftDives: true));
+            yield return new WaitForSeconds(FourHandPairDelay * arena.Parameters(pattern).interval);
+            yield return DiagonalPair(2, center, outer, leftDives: false);
+            yield return first;
+        }
+
+        private IEnumerator DiagonalPair(int first, float center, float outer, bool leftDives)
+        {
+            const BossPattern pattern = BossPattern.fist_diagonal_rush;
+            const string attack = "엇갈린 대각선 돌진";
+            Vector2 half = battleFists[first].bounds.extents;
+            float inner = half.x + arena.Player.HurtboxHalfSize.x + .7f;
+            float low = arena.GroundY + half.y;
+            float high = low + 5.2f;
+            var left = StartCoroutine(StrikeFist(first, new Vector2(center - inner, leftDives ? high : low),
+                new Vector2(center - outer, leftDives ? low : high), pattern, attack, 23, 20));
+            yield return StrikeFist(first + 1, new Vector2(center + inner, leftDives ? low : high),
+                new Vector2(center + outer, leftDives ? high : low), pattern, attack, 23, 20);
+            yield return left;
+        }
+
+        private IEnumerator FourHandRisingColumns()
+        {
+            const BossPattern pattern = BossPattern.fist_rising_columns;
+            float halfWidth = battleFists[0].bounds.extents.x;
+            float outer = halfWidth + 4.2f;
+            float center = ClampPairedFistCenter(PlayerPosition.x, outer + halfWidth);
+            var first = StartCoroutine(RisingPair(0, center - outer, center + outer));
+            yield return new WaitForSeconds(.72f * arena.Parameters(pattern).interval);
+            yield return RisingPair(2, center, center + (DirectionToPlayer < 0 ? -outer : outer) * .78f);
+            yield return first;
+        }
+
+        private IEnumerator RisingPair(int first, float leftX, float rightX)
+        {
+            const BossPattern pattern = BossPattern.fist_rising_columns;
+            const string attack = "네 손 상승 기둥";
+            float bottom = arena.GroundY + battleFists[first].bounds.extents.y;
+            const float rise = 6.5f;
+            var left = StartCoroutine(StrikeFist(first, new Vector2(leftX, bottom), new Vector2(leftX, bottom + rise),
+                pattern, attack, 24, 19));
+            yield return StrikeFist(first + 1, new Vector2(rightX, bottom), new Vector2(rightX, bottom + rise),
+                pattern, attack, 24, 19);
             yield return left;
         }
 
@@ -558,11 +658,11 @@ namespace BossTemplate
             Intent = attack;
             yield return MoveFist(fist, end, speed, damage, pattern);
             if (arena.Finished) yield break;
-            if (pattern is BossPattern.fist_double_slam or BossPattern.fist_cross_slam)
+            if (pattern is BossPattern.fist_double_slam or BossPattern.fist_cross_slam or BossPattern.fist_slam_chain)
             {
                 var impact = new Vector2(end.x, arena.GroundY);
                 arena.ShowRockLandingDust(impact, fist.bounds.size.x, playSound: false);
-                if (index % 2 == 0)
+                if (index % 2 == 0 || pattern == BossPattern.fist_slam_chain)
                 {
                     arena.ShakeImpact(impact, Vector2.down * .32f);
                     arena.PlayEffect(fistSlamSound);
@@ -607,7 +707,8 @@ namespace BossTemplate
             float remaining = 1 - t;
             float eased = pattern switch
             {
-                BossPattern.fist_slams or BossPattern.fist_double_slam or BossPattern.fist_cross_slam => t * t * t,
+                BossPattern.fist_slams or BossPattern.fist_double_slam or BossPattern.fist_cross_slam
+                    or BossPattern.fist_slam_chain => t * t * t,
                 BossPattern.fist_jab or BossPattern.fist_uppercut => 1 - remaining * remaining * remaining,
                 _ => Mathf.SmoothStep(0, 1, t)
             };

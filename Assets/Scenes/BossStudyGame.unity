@@ -16733,10 +16733,12 @@ MonoBehaviour:
   ages: []
   frequencies: []
   readyTitle: {fileID: 188797034}
+  pauseDisplayFont: {fileID: 12800000, guid: 10d187d8ac56a3d41aa97a53aaf499e9, type: 3}
   attemptLabel: {fileID: 1354775435}
   attempt: {fileID: 780267087}
   ratingTitle: {fileID: 0}
   victoryStar: {fileID: 5199979006384268662, guid: 6f72655409abe7c4787442aba58c6318, type: 3}
+  victoryShade: {fileID: 2800000, guid: a850e165af7ef4345bd56f53a51dcbe8, type: 3}
   debrief: {fileID: 0}
   participant: {fileID: 0}
   contact: {fileID: 0}

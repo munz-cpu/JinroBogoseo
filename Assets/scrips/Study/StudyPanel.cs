@@ -16,6 +16,7 @@ namespace BossTemplate
         [SerializeField] private Font pauseDisplayFont;
         [SerializeField] private Button attempt;
         [SerializeField] private Text ratingTitle, debrief, participant, contact, withdrawalMessage;
+        [SerializeField] private Button copyContact;
         [SerializeField] private StudyMainMenu mainMenu;
         [SerializeField] private RectTransform consentContent, waitingContent, declinedContent;
         [SerializeField] private RectTransform surveyContent, debriefContent;
@@ -35,6 +36,7 @@ namespace BossTemplate
         private StudyPauseMenu pauseMenu;
         private StudyVictoryPanel victoryPanel;
         private StudySlideIn screenSlide;
+        private float contactFeedbackUntil;
         internal bool HasVictoryPanel => victoryPanel != null;
 
         internal void Bind(StudySession owner, Font font)
@@ -73,6 +75,7 @@ namespace BossTemplate
             Listen(withdraw, session.Withdraw);
             Listen(retry, session.Retry);
             Listen(replay, session.StartNewStudy);
+            Listen(copyContact, CopyContact);
 
             for (int i = 0; i < ratings.Length; i++)
             {
@@ -89,6 +92,11 @@ namespace BossTemplate
         {
             if (!session) return;
             screenSlide?.Advance();
+            if (contactFeedbackUntil > 0 && Time.unscaledTime >= contactFeedbackUntil)
+            {
+                contactFeedbackUntil = 0;
+                contact.text = $"문의  {session.Protocol.contact}";
+            }
             var keyboard = Keyboard.current;
             bool escape = keyboard?.escapeKey.wasPressedThisFrame == true;
             if (attempt && escape) session.TogglePause();
@@ -161,6 +169,8 @@ namespace BossTemplate
                     debrief.text = session.Protocol.debrief;
                     participant.text = $"참가자 ID  {session.ParticipantId}";
                     contact.text = $"문의  {session.Protocol.contact}";
+                    contactFeedbackUntil = 0;
+                    if (copyContact) copyContact.interactable = !string.IsNullOrWhiteSpace(session.Protocol.contact);
                     break;
                 case StudyScreen.Withdrawal:
                     withdrawalMessage.text = session.WithdrawalPending
@@ -244,6 +254,15 @@ namespace BossTemplate
                 status.gameObject.SetActive(visible);
             }
             if (retry) retry.gameObject.SetActive(visible);
+        }
+
+        private void CopyContact()
+        {
+            string address = session.Protocol.contact;
+            if (string.IsNullOrWhiteSpace(address)) return;
+            GUIUtility.systemCopyBuffer = address;
+            contact.text = "문의  복사됨";
+            contactFeedbackUntil = Time.unscaledTime + 1.5f;
         }
 
         private static void Listen(Button button, UnityAction callback)

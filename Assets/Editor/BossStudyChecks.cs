@@ -98,10 +98,18 @@ internal static class BossStudyChecks
             Check(menuBounds.Contains(menu.InverseTransformPoint(corners[0]))
                 && menuBounds.Contains(menu.InverseTransformPoint(corners[2])), $"Menu item fits on screen: {item}");
         }
-        foreach (string layer in new[] { "하늘", "안개", "먼 실루엣", "가까운 실루엣", "골렘" })
-            Check(menu.Find(layer).GetComponent<Image>().sprite, $"Menu art is linked: {layer}");
-        var sky = (RectTransform)menu.Find("하늘");
+        var scenery = GameObject.Find("메뉴 전투 배경");
+        var studyPanel = UnityEngine.Object.FindAnyObjectByType<StudyPanel>();
+        var studyBackdrop = (GameObject)new SerializedObject(studyPanel).FindProperty("studyBackdrop").objectReferenceValue;
+        Check(!studyBackdrop.activeSelf, "The study pages' background must not cover the arena in the menu");
+        var scenerySprites = scenery.GetComponentsInChildren<SpriteRenderer>();
+        Check(scenerySprites.Length == 9 && Array.TrueForAll(scenerySprites, layer => layer.sprite && layer.sharedMaterial),
+            "Menu reuses the arena background, ground and platform renderers");
+        var sky = scenery.transform.Find("Sky");
+        Check(sky.GetComponent<SpriteRenderer>().sharedMaterial == AssetDatabase.LoadAssetAtPath<Material>("Assets/Art/PixelLostBackground.mat"),
+            "The menu uses the same background material as the arena");
         var golem = (RectTransform)menu.Find("골렘");
+        Check(golem.GetComponent<Image>().sprite, "Golem sprite is linked");
         var mouse = InputSystem.AddDevice<Mouse>();
         try
         {
@@ -109,7 +117,8 @@ internal static class BossStudyChecks
             InputState.Change(mouse, new MouseState { position = new Vector2(Screen.width * .95f, Screen.height * .85f) },
                 InputUpdateType.Dynamic);
             yield return new WaitForSecondsRealtime(.2f);
-            Check(sky.anchoredPosition.x > 0 && golem.anchoredPosition.x > sky.anchoredPosition.x * 4,
+            float worldPerUi = Camera.main.orthographicSize * 2 / menuBounds.height;
+            Check(sky.localPosition.x > 0 && golem.anchoredPosition.x * worldPerUi > sky.localPosition.x * 4,
                 "Mouse parallax moves the foreground farther than the sky");
         }
         finally
@@ -136,6 +145,7 @@ internal static class BossStudyChecks
         play.onClick.Invoke();
         yield return Until(() => SceneManager.GetActiveScene().path == StudySceneEntry.IntroPath
             && study.Screen == StudyScreen.Consent, "Start opens consent from the main menu");
+        Check(!scenery.activeSelf && studyBackdrop.activeSelf, "The consent screen restores its study background");
         var panel = UnityEngine.Object.FindAnyObjectByType<StudyPanel>();
         var consentButton = Array.Find(panel.GetComponentsInChildren<UnityEngine.UI.Button>(),
             button => button.name == "연구 참여에 동의하고 시작");

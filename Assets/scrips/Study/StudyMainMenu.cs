@@ -1,4 +1,3 @@
-using System;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
@@ -9,21 +8,25 @@ namespace BossTemplate
 {
     internal sealed class StudyMainMenu
     {
-        private static readonly Color Ink = new Color(.035f, .049f, .056f);
-        private static readonly Color Paper = new Color(.91f, .95f, .94f);
-        private static readonly Color Accent = new Color(.46f, .91f, .94f);
-        private static readonly Color Surface = new Color(.085f, .14f, .16f);
+        private static readonly Color Ink = new Color(.045f, .040f, .038f);
+        private static readonly Color Paper = new Color(.96f, .94f, .91f);
+        private static readonly Color Accent = new Color(.98f, .79f, .59f);
+        private static readonly Color Surface = new Color(.16f, .13f, .11f);
         private static readonly Vector2[] LayerTravel =
         {
-            new Vector2(6, 3), new Vector2(12, 6), new Vector2(16, 8),
-            new Vector2(22, 11), new Vector2(34, 16), new Vector2(60, 32)
+            new Vector2(6, 3), new Vector2(12, 6), new Vector2(22, 11), new Vector2(34, 16), new Vector2(42, 0)
         };
+        private static readonly Vector2 GolemTravel = new Vector2(60, 32);
 
         private readonly StudySession session;
         private readonly Font displayFont, bodyFont;
-        private readonly RectTransform[] layers = new RectTransform[LayerTravel.Length];
-        private readonly Texture2D shade, glow;
-        private readonly RectTransform navigation, details;
+        private readonly GameObject scenery;
+        private readonly Camera menuCamera;
+        private readonly Transform[] sceneryLayers = new Transform[LayerTravel.Length];
+        private readonly Vector3[] layerOrigins;
+        private readonly float skyWidth;
+        private readonly Texture2D shade;
+        private readonly RectTransform golemLayer, navigation, details;
         private readonly Button play, back, backToMenu;
         private readonly Text playLabel, heading, body, volumeLabel;
         private readonly ScrollRect scroll;
@@ -35,7 +38,7 @@ namespace BossTemplate
 
         internal RectTransform Root { get; }
 
-        internal StudyMainMenu(RectTransform parent, Font displayFont, Font bodyFont, Sprite[] background,
+        internal StudyMainMenu(RectTransform parent, Font displayFont, Font bodyFont, GameObject background,
             Sprite golem, StudySession session)
         {
             this.session = session;
@@ -43,26 +46,26 @@ namespace BossTemplate
             this.bodyFont = bodyFont;
             Root = Rect(parent, "메인 메뉴", Vector2.one * .5f, Vector2.zero, Vector2.zero);
             Stretch(Root);
-            Paint(Root, Ink);
 
-            layers[0] = Background("하늘", background[0], -.06f, 1.06f);
-            layers[1] = Background("안개", background[1], .16f, .58f);
-            glow = MakeTexture(64, 64, (x, y) =>
+            menuCamera = parent.GetComponent<Canvas>().worldCamera;
+            var cameraPosition = menuCamera.transform.position;
+            scenery = Object.Instantiate(background, new Vector3(cameraPosition.x, cameraPosition.y - .6f, 0), Quaternion.identity);
+            scenery.name = "메뉴 전투 배경";
+            layerOrigins = new Vector3[sceneryLayers.Length];
+            for (int i = 0; i < sceneryLayers.Length; i++)
             {
-                float radius = (new Vector2(x, y) - Vector2.one * .5f).magnitude * 2;
-                float alpha = 1 - Mathf.SmoothStep(0, 1, radius);
-                return new Color(.21f, .53f, .60f, .82f * alpha * alpha);
-            });
-            layers[2] = Rect(Root, "골렘 뒤의 빛", new Vector2(.755f, .56f), Vector2.zero, Vector2.zero);
-            PaintTexture(layers[2], glow);
-            layers[3] = Background("먼 실루엣", background[2], -.02f, .43f);
-            layers[4] = Background("가까운 실루엣", background[3], -.10f, .26f);
-            layers[5] = Rect(Root, "골렘", new Vector2(.755f, .51f), Vector2.zero, Vector2.zero);
-            var figure = Paint(layers[5], Color.white);
+                sceneryLayers[i] = scenery.transform.GetChild(i);
+                layerOrigins[i] = sceneryLayers[i].localPosition;
+            }
+            var sky = sceneryLayers[0].GetComponent<SpriteRenderer>();
+            skyWidth = sky.sprite.bounds.size.x * sky.transform.localScale.x;
+            scenery.SetActive(false);
+
+            golemLayer = Rect(Root, "골렘", new Vector2(.755f, .51f), Vector2.zero, Vector2.zero);
+            var figure = Paint(golemLayer, Color.white);
             figure.sprite = golem;
             figure.preserveAspect = true;
-            shade = MakeTexture(64, 1, (x, _) =>
-                new Color(Ink.r, Ink.g, Ink.b, 1 - Mathf.SmoothStep(0, 1, Mathf.InverseLerp(.23f, .72f, x))));
+            shade = MakeShade();
             var darkening = Rect(Root, "왼쪽 음영", Vector2.zero, Vector2.zero, Vector2.zero);
             Stretch(darkening);
             PaintTexture(darkening, shade);
@@ -113,6 +116,8 @@ namespace BossTemplate
             Update();
         }
 
+        internal void SetSceneryVisible(bool visible) => scenery.SetActive(visible);
+
         internal void ShowBack(bool show)
         {
             backToMenu.gameObject.SetActive(show);
@@ -137,16 +142,19 @@ namespace BossTemplate
             {
                 viewport = screen.size;
                 travelScale = Mathf.Min(1, Mathf.Min(screen.height / 660, screen.width / 1050));
-                layers[2].sizeDelta = new Vector2(screen.width * .78f, screen.height * 1.2f);
                 float figure = Mathf.Min(screen.height * .78f, screen.width * .47f);
-                layers[5].sizeDelta = Vector2.one * figure;
+                golemLayer.sizeDelta = Vector2.one * figure;
+                float viewWidth = menuCamera.orthographicSize * 2 * screen.width / screen.height;
+                scenery.transform.localScale = new Vector3(Mathf.Max(1, (viewWidth + 1.5f) / skyWidth), 1, 1);
                 navigation.localScale = Vector3.one * travelScale;
                 float detailScale = Mathf.Min(1, Mathf.Min(screen.height / 500, screen.width / 630));
                 details.localScale = Vector3.one * detailScale;
                 details.anchorMin = details.anchorMax = new Vector2(Mathf.Max(.28f, 272 * detailScale / screen.width), .51f);
             }
-            for (int i = 0; i < layers.Length; i++)
-                layers[i].anchoredPosition = Vector2.Scale(pointer, LayerTravel[i]) * travelScale;
+            float worldTravel = menuCamera.orthographicSize * 2 / screen.height * travelScale;
+            for (int i = 0; i < sceneryLayers.Length; i++)
+                sceneryLayers[i].localPosition = layerOrigins[i] + (Vector3)(Vector2.Scale(pointer, LayerTravel[i]) * worldTravel);
+            golemLayer.anchoredPosition = Vector2.Scale(pointer, GolemTravel) * travelScale;
         }
 
         internal void CloseDetails()
@@ -162,8 +170,8 @@ namespace BossTemplate
         internal void Destroy()
         {
             if (showingSettings && details && details.gameObject.activeSelf) StudyPauseMenu.SaveVolume(volume.value);
+            Object.Destroy(scenery);
             Object.Destroy(shade);
-            Object.Destroy(glow);
         }
 
         private void OpenDetails(string title, string text, bool settings = false)
@@ -242,35 +250,29 @@ namespace BossTemplate
             var colors = button.colors;
             colors.highlightedColor = Accent;
             colors.selectedColor = Accent;
-            colors.pressedColor = new Color(.32f, .68f, .74f);
+            colors.pressedColor = new Color(.73f, .53f, .37f);
             colors.fadeDuration = .13f;
             button.colors = colors;
             button.onClick.AddListener(action);
             return button;
         }
 
-        private RectTransform Background(string name, Sprite sprite, float bottom, float top)
-        {
-            var rect = Rect(Root, name, Vector2.one * .5f, Vector2.zero, new Vector2(100, 0));
-            rect.anchorMin = new Vector2(0, bottom);
-            rect.anchorMax = new Vector2(1, top);
-            Paint(rect, Color.white).sprite = sprite;
-            return rect;
-        }
-
         private static void SetNavigation(Selectable control, Selectable up, Selectable down) =>
             control.navigation = new Navigation { mode = Navigation.Mode.Explicit, selectOnUp = up, selectOnDown = down };
 
-        private static Texture2D MakeTexture(int width, int height, Func<float, float, Color> sample)
+        private static Texture2D MakeShade()
         {
-            var texture = new Texture2D(width, height, TextureFormat.RGBA32, false)
+            const int width = 64;
+            var texture = new Texture2D(width, 1, TextureFormat.RGBA32, false)
             {
                 wrapMode = TextureWrapMode.Clamp, filterMode = FilterMode.Bilinear
             };
-            var pixels = new Color[width * height];
-            for (int y = 0; y < height; y++)
-                for (int x = 0; x < width; x++)
-                    pixels[y * width + x] = sample((float)x / (width - 1), (float)y / Mathf.Max(1, height - 1));
+            var pixels = new Color[width];
+            for (int x = 0; x < width; x++)
+            {
+                float alpha = 1 - Mathf.SmoothStep(0, 1, Mathf.InverseLerp(.23f, .72f, (float)x / (width - 1)));
+                pixels[x] = new Color(Ink.r, Ink.g, Ink.b, alpha);
+            }
             texture.SetPixels(pixels);
             texture.Apply(false, true);
             return texture;

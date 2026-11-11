@@ -2022,11 +2022,8 @@ MonoBehaviour:
   attempt: {fileID: 0}
   ratingTitle: {fileID: 0}
   menuFont: {fileID: 12800000, guid: 10d187d8ac56a3d41aa97a53aaf499e9, type: 3}
-  menuBackground:
-  - {fileID: 21300000, guid: 5257e327983a13245ae84bc6f730a2a6, type: 3}
-  - {fileID: 21300002, guid: 5257e327983a13245ae84bc6f730a2a6, type: 3}
-  - {fileID: 21300004, guid: 5257e327983a13245ae84bc6f730a2a6, type: 3}
-  - {fileID: 21300006, guid: 5257e327983a13245ae84bc6f730a2a6, type: 3}
+  menuBackground: {fileID: 700000000000000010, guid: 70b00ef01401406aa987a2747546d2f8, type: 3}
+  studyBackdrop: {fileID: 360392692}
   menuGolem: {fileID: -1817222694525845891, guid: 4d075359de183e24ba72bf64530ac654, type: 3}
   debrief: {fileID: 0}
   participant: {fileID: 0}

@@ -16,7 +16,8 @@ namespace BossTemplate
         [SerializeField] private Button attempt;
         [SerializeField] private Text ratingTitle, debrief, participant, contact, withdrawalMessage;
         [SerializeField] private Font menuFont;
-        [SerializeField] private Sprite[] menuBackground;
+        [SerializeField] private GameObject menuBackground;
+        [SerializeField] private GameObject studyBackdrop;
         [SerializeField] private Sprite menuGolem;
         [SerializeField] private Sprite victoryStar;
         [SerializeField] private StudyRatingButton[] ratings;
@@ -35,7 +36,7 @@ namespace BossTemplate
         internal void Bind(StudySession owner, Font font)
         {
             session = owner;
-            if (menuGolem && menuBackground?.Length == 4)
+            if (menuGolem && menuBackground)
             {
                 mainMenu = new StudyMainMenu((RectTransform)transform, menuFont ? menuFont : consentNotice.font,
                     font && !useSceneFonts ? font : consentNotice.font, menuBackground, menuGolem, session);
@@ -105,6 +106,8 @@ namespace BossTemplate
         internal void Render(StudyScreen screen)
         {
             if (activeScreen) activeScreen.SetActive(false);
+            mainMenu?.SetSceneryVisible(screen == StudyScreen.Title);
+            if (studyBackdrop) studyBackdrop.SetActive(screen != StudyScreen.Title);
             activeScreen = screens[(int)screen];
             if (!activeScreen)
             {

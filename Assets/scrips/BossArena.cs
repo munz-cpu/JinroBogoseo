@@ -208,7 +208,9 @@ namespace BossTemplate
         private void Update()
         {
             AdvancePhaseIfDefeated();
-            if (!Study && (Player.Health.Dead || Finished && Keyboard.current?.enterKey.wasPressedThisFrame == true))
+            var keyboard = Keyboard.current;
+            if (!Study && Finished && keyboard != null
+                && (keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame))
                 ResetFight();
         }
 

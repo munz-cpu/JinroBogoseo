@@ -190,10 +190,11 @@ internal static class BossStudyChecks
         Check(ReferenceEquals(study.Protocol, settings.protocol), "Before enrollment, use the current Inspector protocol");
         Check(consentButton.interactable, "A configured protocol must enable enrollment immediately");
         consentButton.onClick.Invoke();
-        yield return Until(() => study.Screen == StudyScreen.Ready && SceneManager.GetActiveScene().path == StudySceneEntry.GamePath
-            && UnityEngine.Object.FindAnyObjectByType<BossArena>()?.Study == study, "Server assignment and game scene");
+        yield return Until(() => study.InCombat && SceneManager.GetActiveScene().path == StudySceneEntry.GamePath
+            && UnityEngine.Object.FindAnyObjectByType<BossArena>()?.Study == study,
+            "Consent and assignment start combat without a second button");
         var arena = UnityEngine.Object.FindAnyObjectByType<BossArena>();
-        Check(arena.Finished && UnityEngine.Object.FindObjectsByType<StudySession>(FindObjectsSortMode.None).Length == 1,
+        Check(!arena.Finished && UnityEngine.Object.FindObjectsByType<StudySession>(FindObjectsSortMode.None).Length == 1,
             "The existing session must own the game scene");
         var saved = storage.Load();
         Check(saved.participant.age_group == "undisclosed" && saved.participant.gaming_experience == "undisclosed",
@@ -201,8 +202,8 @@ internal static class BossStudyChecks
         string participant = saved.participant.participant_id;
         Check(Guid.TryParse(participant, out _) && saved.assignment.target_attempts == 7, "UUID and fixed test assignment");
         Check(study.ParticipantId == participant, "UUID persisted and reloaded");
-        study.BeginAttempt();
-        Check(!arena.Finished && study.InCombat, "Start after consent and assignment");
+        Check(saved.active.attempt_number == 1 && !GameObject.Find("도전 시작"),
+            "The first attempt starts once and the extra start button stays hidden");
 
         // Set the isolated test profile offline before the attempt closes, then restore it after a failure.
         study.Protocol.apiUrl = "http://127.0.0.1:1";
@@ -293,35 +294,39 @@ internal static class BossStudyChecks
             File.Exists(Path.Combine(storagePath, "completed-studies", participant + ".json")),
             "Replay should archive the completed study and reset the current registration");
         study.Enroll();
-        yield return Until(() => study.Screen == StudyScreen.Ready && SceneManager.GetActiveScene().path == StudySceneEntry.GamePath,
+        yield return Until(() => study.InCombat && SceneManager.GetActiveScene().path == StudySceneEntry.GamePath,
             "Replay should register and start a new study");
         yield return Until(() => new List<StudySave>(storage.LoadPendingArchives(null)).Count == 0,
             "The old participant rating syncs from the archive in the background");
         Check(study.ParticipantId != participant, "Replay must have a fresh participant identity");
         arena = UnityEngine.Object.FindAnyObjectByType<BossArena>();
-        study.BeginAttempt();
         arena.Player.Health.Hit(arena.Player.Health.Current);
-        yield return Until(() => study.InCombat && !arena.CombatEnded && study.Deaths == 1,
-            "Defeat increments the death count and restarts combat automatically");
+        yield return Until(() => study.Screen == StudyScreen.Defeat && study.Deaths == 1, "Defeat waits for retry");
+        yield return new WaitForSecondsRealtime(.15f);
         saved = storage.Load();
-        Check(saved.lastAttempt.result == "defeat" && saved.lastAttempt.attempt_number == 1
-            && saved.active.attempt_number == 2 && saved.active.participant_id == saved.lastAttempt.participant_id,
-            "The defeat and next attempt are stored under the same participant");
-        Check(arena.Player.Health.Current == arena.Player.Health.Maximum && arena.Boss.Phase == 1,
-            "Automatic retry resets player health and returns to phase one");
+        Check(saved.lastAttempt.result == "defeat" && saved.lastAttempt.attempt_number == 1 && saved.active == null,
+            "Defeat is stored without starting the next attempt");
         var gamePanel = UnityEngine.Object.FindAnyObjectByType<StudyPanel>();
+        Check(Array.Exists(gamePanel.GetComponentsInChildren<Text>(), text => text.text == "Enter로 다시 도전"),
+            "Defeat shows the Enter prompt");
         var keyboard = InputSystem.AddDevice<Keyboard>();
-        void PressEscape()
+        void PressKey(Key key)
         {
             // Feed keyboard state directly because batch mode has no focused Game view.
             keyboard.MakeCurrent();
-            InputState.Change(keyboard, new KeyboardState(Key.Escape), InputUpdateType.Dynamic);
+            InputState.Change(keyboard, new KeyboardState(key), InputUpdateType.Dynamic);
             typeof(StudyPanel).GetMethod("Update", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(gamePanel, null);
             InputState.Change(keyboard, new KeyboardState(), InputUpdateType.Dynamic);
         }
         try
         {
-            PressEscape();
+            PressKey(Key.Enter);
+            saved = storage.Load();
+            Check(study.InCombat && saved.active.attempt_number == 2
+                && saved.active.participant_id == saved.lastAttempt.participant_id
+                && arena.Player.Health.Current == arena.Player.Health.Maximum && arena.Boss.Phase == 1,
+                "Enter restarts phase one with full health and the same participant");
+            PressKey(Key.Escape);
             Check(study.Paused && Time.timeScale == 0 && AudioListener.pause, "Escape pauses gameplay and sound");
             Check(Array.Exists(gamePanel.GetComponentsInChildren<Text>(), text => text.text == "죽은 횟수  1회"),
                 "Pause menu shows the participant death count");
@@ -335,7 +340,7 @@ internal static class BossStudyChecks
             Check(study.InCombat && !study.Paused && Time.timeScale == 1 && !AudioListener.pause,
                 "Resume returns to the same fight");
             yield return null;
-            PressEscape();
+            PressKey(Key.Escape);
             Check(study.Paused, "Escape reopens the pause menu");
             float activeTime = storage.Load().active.duration_seconds;
             yield return new WaitForSecondsRealtime(.25f);
@@ -356,11 +361,12 @@ internal static class BossStudyChecks
         var continueButton = GameObject.Find("메인 메뉴").transform.Find("메뉴 항목/게임 시작").GetComponent<Button>();
         Check(continueButton.GetComponentInChildren<Text>().text == "이어하기", "An active participant sees Continue");
         continueButton.onClick.Invoke();
-        yield return Until(() => study.Screen == StudyScreen.Ready && SceneManager.GetActiveScene().path == StudySceneEntry.GamePath,
-            "Start resumes the same participant");
-        Check(storage.Load().attempts == 2 && study.Deaths == 1, "Menu return preserves attempts and deaths");
+        yield return Until(() => study.InCombat && SceneManager.GetActiveScene().path == StudySceneEntry.GamePath,
+            "Continue starts combat without a second button");
+        saved = storage.Load();
+        Check(saved.attempts == 3 && saved.active.attempt_number == 3 && study.Deaths == 1,
+            "Continue starts a new attempt and preserves the prior attempts and death count");
         arena = UnityEngine.Object.FindAnyObjectByType<BossArena>();
-        study.BeginAttempt();
         arena.SkipCurrentPhase();
         yield return Until(() => arena.Boss.Phase == 2 && !arena.Boss.Transitioning, "Second study enters phase two");
         arena.SkipCurrentPhase();

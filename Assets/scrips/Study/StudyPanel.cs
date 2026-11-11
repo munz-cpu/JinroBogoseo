@@ -74,8 +74,12 @@ namespace BossTemplate
         private void Update()
         {
             if (!session) return;
-            bool escape = Keyboard.current?.escapeKey.wasPressedThisFrame == true;
+            var keyboard = Keyboard.current;
+            bool escape = keyboard?.escapeKey.wasPressedThisFrame == true;
             if (attempt && escape) session.TogglePause();
+            else if (session.Screen == StudyScreen.Defeat && keyboard != null
+                && (keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame))
+                session.BeginAttempt();
             if (mainMenu == null) return;
             if (session.Screen == StudyScreen.Title)
             {
@@ -102,7 +106,7 @@ namespace BossTemplate
             bool showDebriefScenery = debriefScenery && screen == StudyScreen.Debrief;
             if (debriefScenery) debriefScenery.SetActive(showDebriefScenery);
             if (studyBackdrop) studyBackdrop.SetActive(screen != StudyScreen.Title && !showDebriefScenery);
-            activeScreen = screens[(int)screen];
+            activeScreen = screens[(int)(screen == StudyScreen.Defeat ? StudyScreen.Ready : screen)];
             if (!activeScreen)
             {
                 Debug.LogError($"Study screen {screen} has no scene reference.", this);
@@ -123,8 +127,11 @@ namespace BossTemplate
                     enroll.interactable = configured;
                     break;
                 case StudyScreen.Ready:
-                    readyTitle.text = session.LostLast ? "보스전 패배" : "보스전 준비";
-                    attemptLabel.text = session.LostLast ? "다시 도전" : "도전 시작";
+                case StudyScreen.Defeat:
+                    bool defeated = screen == StudyScreen.Defeat;
+                    readyTitle.text = defeated ? "보스전 패배" : "보스전 준비";
+                    attemptLabel.text = defeated ? "Enter로 다시 도전" : "도전 시작";
+                    attempt.enabled = !defeated;
                     break;
                 case StudyScreen.Survey:
                     victoryPanel?.Fit();

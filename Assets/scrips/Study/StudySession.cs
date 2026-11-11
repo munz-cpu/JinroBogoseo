@@ -10,7 +10,7 @@ using UnityEngine.SceneManagement;
 
 namespace BossTemplate
 {
-    internal enum StudyScreen { Consent, Waiting, Ready, Combat, Survey, Debrief, Declined, Withdrawal, Error, Title }
+    internal enum StudyScreen { Consent, Waiting, Ready, Combat, Survey, Debrief, Declined, Withdrawal, Error, Title, Defeat }
 
     internal sealed class StudySession : MonoBehaviour
     {
@@ -59,11 +59,10 @@ namespace BossTemplate
         internal int Attempts => state.attempts;
         internal AttemptRecord LastAttempt => state.lastAttempt;
         internal bool HasContinuation => state.participant != null && !state.debrief;
-        private bool CanPause => !fatal && !changingScene && (Screen == StudyScreen.Ready
+        private bool CanPause => !fatal && !changingScene && (Screen is StudyScreen.Ready or StudyScreen.Defeat
             || InCombat && !arena.CombatEnded);
         private float ElapsedSeconds => (Paused ? pausedAt : Time.realtimeSinceStartup) - startTime;
         internal bool Cleared => state.cleared;
-        internal bool LostLast => state.recent.Count > 0 && state.recent[state.recent.Count - 1].result == "defeat";
         internal bool WithdrawalPending => state.withdrawalPending;
         // A save written before enrollment can deserialize with an empty protocol object.
         internal StudyProtocol Protocol => (state?.participant != null ? state.protocol : null) ?? asset.protocol;
@@ -189,7 +188,9 @@ namespace BossTemplate
 
         internal void BeginAttempt()
         {
-            if (Screen != StudyScreen.Ready || state.assignment == null || !arena || changingScene || Paused) return;
+            if (Screen is not (StudyScreen.Ready or StudyScreen.Defeat)
+                || state.assignment == null || !arena || changingScene || Paused) return;
+            if (Screen == StudyScreen.Defeat) resumedFrame = Time.frameCount;
             StartAttempt();
         }
 
@@ -354,7 +355,7 @@ namespace BossTemplate
                     else arena.EndStudyFight();
                 }
                 if (nextScreen.HasValue) Show(nextScreen.Value);
-                else if (result == "defeat" && !quitting) StartAttempt();
+                else if (result == "defeat" && !quitting) Show(StudyScreen.Defeat);
                 else RestoreScreen();
             }
         }
@@ -630,7 +631,7 @@ namespace BossTemplate
             if (quitting || changingScene) return;
             var destination = screen switch
             {
-                StudyScreen.Ready or StudyScreen.Combat => StudyStage.Game,
+                StudyScreen.Ready or StudyScreen.Combat or StudyScreen.Defeat => StudyStage.Game,
                 StudyScreen.Survey when victoryFrozen => StudyStage.Game,
                 StudyScreen.Survey or StudyScreen.Debrief or StudyScreen.Withdrawal => StudyStage.Review,
                 StudyScreen.Consent or StudyScreen.Waiting or StudyScreen.Declined => StudyStage.Intro,
@@ -640,7 +641,9 @@ namespace BossTemplate
             if (destination == stage)
             {
                 if (screen != StudyScreen.Survey) ReleaseVictory();
-                panel.Render(screen);
+                // Ready waits for the game scene. The menu or consent action already started the run.
+                if (screen == StudyScreen.Ready && arena && state.assignment != null) BeginAttempt();
+                else panel.Render(screen);
                 return;
             }
 

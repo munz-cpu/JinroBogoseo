@@ -141,6 +141,7 @@ namespace BossTemplate
 
         private void Update()
         {
+            if (arena.Frozen) return;
             if (arena.Finished) { gameObject.SetActive(false); return; }
             if (Time.time < launchAt) return;
             if (Planted)

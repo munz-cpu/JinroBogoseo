@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using UnityEngine;
@@ -21,6 +22,20 @@ namespace BossTemplate
             if (string.IsNullOrEmpty(state.active?.attempt_id)) state.active = null;
             if (string.IsNullOrEmpty(state.lastAttempt?.attempt_id)) state.lastAttempt = null;
             if (state.assignment?.target_attempts is null or <= 0) state.assignment = null;
+            if (state.participant != null && state.deaths == 0)
+            {
+                // Older saves only retained recent attempts and records awaiting upload.
+                var defeats = new HashSet<string>();
+                void CountDefeat(AttemptRecord attempt)
+                {
+                    if (attempt?.result == "defeat") defeats.Add(attempt.attempt_id);
+                }
+                foreach (var attempt in state.recent) CountDefeat(attempt);
+                CountDefeat(state.lastAttempt);
+                foreach (var submission in state.pending)
+                    if (submission.route == "attempts") CountDefeat(JsonUtility.FromJson<AttemptRecord>(submission.json));
+                state.deaths = defeats.Count;
+            }
             return state;
         }
 

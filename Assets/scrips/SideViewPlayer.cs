@@ -90,6 +90,7 @@ namespace BossTemplate
 
         private void Update()
         {
+            if (arena.Study && arena.Study.BlocksGameplayInput) return;
             body.color = Time.time < Health.InvulnerableUntil ? Color.white : baseColor;
             bool finished = arena.Finished;
             if (!finished && Health.Current < Health.Maximum)
@@ -116,8 +117,7 @@ namespace BossTemplate
             Move(axis, jump, down && !dashing, Time.deltaTime);
             if (visuals) visuals.SetState(dashing ? facing : axis, grounded, vertical, facing, false);
             if (useMagazine && RoundsRemaining == 0 && Time.time >= reloadUntil) RoundsRemaining = MagazineSize;
-            bool mouseShot = Mouse.current != null && Mouse.current.leftButton.isPressed
-                && !(arena.Study && arena.Study.ConsumesShot(Mouse.current.position.ReadValue()));
+            bool mouseShot = Mouse.current != null && Mouse.current.leftButton.isPressed;
             if ((k.enterKey.isPressed || mouseShot) && (!useMagazine || RoundsRemaining > 0) && Use(1)
                 && Shoot(new Vector2(facing * 15, 0), 7))
             {

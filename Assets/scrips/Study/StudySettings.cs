@@ -15,7 +15,7 @@ namespace BossTemplate
     {
         [Header("서버와 연구 버전")]
         public string apiUrl = "http://127.0.0.1:8000";
-        public string settingsVersion = "combat-v5";
+        public string settingsVersion = "combat-v6";
         public string consentVersion = "consent-v5";
         [Header("동의와 사후 안내")]
         [TextArea(4, 10)] public string consentNotice =

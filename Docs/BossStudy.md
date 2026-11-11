@@ -6,16 +6,16 @@ Unity 6000.6.3f1, URP 17.6, Cinemachine 6.6, Input System 1.20, uGUI 2.6을 사�
 
 | 씬 | 역할 |
 | --- | --- |
-| `Assets/Scenes/BossStudyStart.unity` | 보스전 제목과 시작 버튼 |
-| `Assets/Scenes/BossStudyIntro.unity` | 플레이테스트 안내·동의, 참가자 정보 입력과 그룹 배정 |
+| `Assets/Scenes/BossStudyStart.unity` | 기존 타이틀 씬. 열면 인트로 메뉴로 이동 |
+| `Assets/Scenes/BossStudyIntro.unity` | 메인 메뉴, 플레이테스트 안내·동의, 참가자 등록 |
 | `Assets/Scenes/BossStudyGame.unity` | 게임 진행, 보스전과 재도전, 난이도 조절 및 도전 기록 |
 | `Assets/Scenes/BossStudyReview.unity` | 별점, 사후 안내와 데이터 제외 |
 
-기본 빌드는 시작 씬에서 열립니다. 네 씬은 하나의 참가자 세션과 전송 대기열을 공유합니다. 재실행 시 저장 상태에 따라 해당 씬으로 이동합니다. 원본 `Assets/Scenes/BossFight.unity`는 Unity Editor에서 일반 전투용으로 열 수 있습니다. 게임 진행 씬은 원본의 전투 코드와 에셋을 사용하며 1페이즈 9개 공격과 별도 낙석, 2페이즈 10개 공격을 총 20개 ID로 추적합니다.
+기본 빌드는 인트로의 메인 메뉴에서 열립니다. 네 씬은 하나의 참가자 세션과 전송 대기열을 공유합니다. 진행 중인 참가자는 **이어하기**로 저장 상태에 맞는 화면으로 돌아갑니다. **설정**에서 전체 음량을 바꿀 수 있고, **통계**에는 도전·사망 횟수와 마지막 도전 기록이 표시됩니다. **실험 약관**에서는 동의 문구와 보관 기간, 문의처를 볼 수 있습니다. 원본 `Assets/Scenes/BossFight.unity`는 Unity Editor에서 일반 전투용으로 열 수 있습니다. 게임 진행 씬은 원본의 전투 코드와 에셋을 사용하며 1페이즈 9개 공격과 별도 낙석, 2페이즈 12개 공격을 총 22개 ID로 추적합니다.
 
 연구 UI는 각 씬의 **연구 참가 화면** 아래에 배치되어 있습니다. 하위 페이지는 Play Mode에서 현재 단계에 맞춰 켜집니다. 씬의 **연구 세션**은 첫 진입에서만 활성화되고 이후 씬 전환에서도 유지됩니다.
 
-안내 및 동의 → 서버 배정 → 도전·재도전 순서로 진행합니다. 승리하면 성취감 별점 1~5점을 선택하거나 건너뛴 뒤 사후 안내로 이동합니다. **참여 종료**를 누르면 사후 안내로 이동합니다. 실제 목표 횟수와 그룹은 플레이 화면에서 숨깁니다. 사후 안내에는 참가자 UUID, 문의처, 제외 요청 버튼이 있습니다.
+안내 및 동의 → 서버 배정 → 도전·재도전 순서로 진행합니다. 승리하면 전투 화면이 멈추고 그 위에 별점 패널이 뜹니다. 성취감 별점 1~5점을 선택하거나 건너뛰면 사후 안내로 이동합니다. 게임 화면에서 **ESC**를 누르면 일시정지 메뉴에서 음량과 사망 횟수를 확인할 수 있습니다. **메뉴로 돌아가기**를 선택하면 진행 중인 도전은 중단으로 기록되며, 타이틀에서 같은 참가자로 새 도전을 시작할 수 있습니다. 일시정지 시간은 플레이 타임에서 제외합니다. 실제 목표 횟수와 그룹은 플레이 화면에서 숨깁니다. 사후 안내에는 참가자 UUID, 문의처, 제외 요청 버튼이 있습니다.
 
 사후 안내의 **다시 하기**는 기록 전송이 끝나면 활성화됩니다. 이전 세션을 로컬의 `completed-studies` 폴더에 보관하고 새 동의 화면을 엽니다. 동의 후 새 세션 ID를 발급해 서버에서 그룹을 다시 추첨합니다. 패배 후 **다시 도전**은 현재 세션과 배정을 이어갑니다. 이전 세션을 제외하려면 당시 참가자 ID를 사후 안내에 표시된 담당자에게 전달합니다.
 
@@ -25,7 +25,7 @@ Unity 6000.6.3f1, URP 17.6, Cinemachine 6.6, Input System 1.20, uGUI 2.6을 사�
 
 ## Unity Inspector 설정
 
-1. Project 창에서 `Assets/Settings/BossStudySettings.asset`을 선택합니다. 이 에셋은 네 씬의 **Study Scene → Study Scene Entry → 연구 설정**에 연결되어 있습니다. `BossStudyStart`를 열고 Play한 뒤 **시작하기**를 누르면 `BossStudyIntro`에서 연구 안내가 표시됩니다.
+1. Project 창에서 `Assets/Settings/BossStudySettings.asset`을 선택합니다. 이 에셋은 네 씬의 **Study Scene → Study Scene Entry → 연구 설정**에 연결되어 있습니다. `BossStudyIntro`를 열고 Play한 뒤 **게임 시작**을 누르면 연구 안내가 표시됩니다.
 2. **Protocol**에 승인된 동의 안내, 보관 기간(**Retention**), 담당자 연락처(**Contact**), 사후 안내를 입력합니다. 설정을 완료하면 동의 버튼이 활성화됩니다. 저장된 동의는 자동으로 새 문구로 교체하지 않습니다.
 3. **Api Url**을 설정합니다. Editor와 Development Build의 로컬 테스트는 기본값 `http://127.0.0.1:8000`을 사용합니다. 참가자 배포 빌드에는 HTTPS API 주소를 입력합니다. Player Settings의 HTTP 설정은 **Development Only**이며, 연구 클라이언트는 개발 환경에서도 루프백 주소의 평문 HTTP만 허용합니다. [Unity PlayerSettings HTTP 설정](https://docs.unity3d.com/6000.0/Documentation/ScriptReference/PlayerSettings-insecureHttpOption.html)
 4. **Minimum Level**과 **Maximum Level**로 난이도 곡선의 범위를 조정합니다. **Boss Health**와 패턴의 **Selection Weight**는 X가 낮은 난이도 값, Y가 높은 난이도 값입니다. **Pattern Overrides**의 **Pattern Id**에는 `StudyRecords.cs`의 식별자(예: `fist_sweep`)를 입력합니다.
@@ -33,7 +33,7 @@ Unity 6000.6.3f1, URP 17.6, Cinemachine 6.6, Input System 1.20, uGUI 2.6을 사�
 
 기존 플레이어 이동·회피·공격과 보스 페이즈 전환을 재사용합니다. 연구 모드에서는 Enter 자동 재시작과 Editor 무적 메뉴를 비활성화합니다. Unity Editor에서 연구 전투 중 페이즈 건너뛰기를 사용할 수 있으며, 2페이즈를 건너뛴 도전도 클리어로 기록·전송합니다. 한 참가자 흐름은 하나의 로컬 파일에 대응합니다. 신규 참가자가 같은 PC를 쓸 때는 다른 프로필을 사용하고, 테스트 파일은 미전송 기록이 없음을 확인한 테스트 환경에서만 정리합니다.
 
-참가자용 빌드에는 기본 Scene List를 사용합니다. 빌드 프로필이 자체 씬 목록을 사용한다면 `BossStudyStart`, `BossStudyIntro`, `BossStudyGame`, `BossStudyReview`를 이 순서대로 등록합니다.
+참가자용 빌드에는 기본 Scene List를 사용합니다. 빌드 프로필이 자체 씬 목록을 사용한다면 `BossStudyIntro`를 첫 번째에 놓고 `BossStudyGame`과 `BossStudyReview`를 포함합니다.
 
 ## DDA 계산
 
@@ -42,6 +42,7 @@ Unity 6000.6.3f1, URP 17.6, Cinemachine 6.6, Input System 1.20, uGUI 2.6을 사�
 - 패턴별 취약도는 최근 패배 최대 4회의 `clamp01(Σ(평균 피해 × 피격 횟수) / max(1, 총 실행 횟수 × 25))`입니다. 난이도가 낮을수록 취약한 패턴의 등장 가중치 보간 위치를 최대 0.35만큼 낮춥니다. 직전 전경 패턴을 제외한 가중 무작위 추첨을 사용하고, 1페이즈 배경 낙석의 가중치는 반복 주기에 반영합니다.
 - 도전 시작에 보스 최대 HP를 0.94–1.12배로 설정합니다. 공격 속도, 주 공격 간격, 판정 크기, 피해량은 기본 배수 1을 사용합니다.
 - 난이도가 높을수록 1페이즈 배경 낙석의 반복 대기가 짧아집니다. 2페이즈에서는 잽·어퍼컷·후려치기 예고에 보조 낙석 한 개가 겹칠 수 있습니다. 착지 지점을 미리 표시하며, 난이도 0–1에서 해당 공격에 겹칠 확률은 5–55%입니다. 보조 낙석의 실행과 피해는 `rock_rain`으로 집계합니다.
+- 2페이즈 체력이 30% 미만이면 주먹 두 개가 추가됩니다. 진행 중인 공격이 끝나면 네 손 교차 내려찍기와 네 손 협공을 번갈아 사용합니다. 새 공격의 실행과 피해는 `fist_cross_slam`과 `fist_pincer_combo`로 집계합니다.
 
 목표는 실제 횟수와 목표의 오차를 줄이는 것입니다. D그룹은 첫 도전부터 설정된 최고 난이도를 사용하고, 이후 도전에서도 같은 전투 설정과 패턴 가중치를 적용합니다. D그룹의 목표 12회는 C그룹과 비교하기 위한 기록값입니다. 모든 그룹에서 목표 전 승리를 허용합니다.
 
@@ -87,7 +88,7 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 
 - 세 씬을 연결한 뒤 Unity Editor 컴파일과 실제 로컬 FastAPI를 사용한 Play Mode 테스트를 통과했습니다. 동의·등록 후 게임 진행 씬으로 이동했고, 클리어 후 후기 씬에서 같은 참가자 세션으로 설문과 데이터 제외를 완료했습니다.
 - 서버 테스트는 `ResearchServer`에서 `python -m unittest -v`를 실행합니다. FastAPI 통합 테스트 8개가 통과했습니다. 동의·토큰·가중 배정·재시작 시 동일 배정, 중복 제출, 페이즈 진행률과 참가자별 합계, 클리어 별점과 생략, 제외, 모의 Sheets 오류 및 재동기화를 검증했습니다.
-- Unity의 **Tools → Boss Arena → Research → Run Study Smoke Test**는 별도 저장 폴더에 테스트 참가자를 생성합니다. 실제 참가 기록이 없는 Editor에서 `BossStudyStart`를 열고, 별도 SQLite DB의 서버를 18741 포트로 시작합니다. `RESEARCH_GROUPS`를 `[{"group":"B","target_attempts":7,"weight":1}]`로 설정합니다. 테스트는 시작 → 진행 → 후기 씬 전환, 세션 유지, 동의 전 차단, UUID 재로드, 페이즈 전환과 1회 클리어, 연결 실패 후 재전송, 설문 및 제외를 확인합니다. 결과는 `Temp/BossStudySmoke.txt`에 기록됩니다. 피해 입력은 재현성을 위해 실제 전투 체력 메서드에 테스트가 직접 전달합니다.
+- Unity의 **Tools → Boss Arena → Research → Run Study Smoke Test**는 별도 저장 폴더에 테스트 참가자를 생성합니다. 실제 참가 기록이 없는 Editor에서 `BossStudyIntro`를 열고, 별도 SQLite DB의 서버를 18741 포트로 시작합니다. `RESEARCH_GROUPS`를 `[{"group":"B","target_attempts":7,"weight":1}]`로 설정합니다. 테스트는 메인 메뉴와 이어하기, 씬 전환, 세션 유지, 동의 전 차단, UUID 재로드, 페이즈 전환과 1회 클리어, 연결 실패 후 재전송, 설문 및 제외를 확인합니다. 결과는 `Temp/BossStudySmoke.txt`에 기록됩니다. 피해 입력은 재현성을 위해 실제 전투 체력 메서드에 테스트가 직접 전달합니다.
 - **Tools → Boss Arena → Research → Validate DDA and Simulate**에서 DDA 방향·변화폭 4개 검증이 통과했습니다. 실력 3단계, 목표 3종에 각 300명씩 시드 315로 모의 실험합니다. `Temp/BossStudySimulation.txt`에 기록된 조합별 MAE는 1.35–9.97회, ±1회 달성률은 0–63.4%, 중도 종료 및 24회 미클리어 비율은 0–31.7%였습니다. 게임 실측 대신 난이도·실력·학습·확률로 결과를 생성하는 모형이며, 참가자 데이터에서의 달성률은 아직 확인하지 않았습니다.
 - 실측 집계는 `python metrics.py study.sqlite3`으로 출력합니다. MAE와 ±1회 달성률 분모는 클리어 참가자, 중도 포기율 분모는 종료가 관측된 참가자(클리어 또는 자발적 종료)입니다. 활동이 재개되지 않은 열린 참가자는 따로 표시합니다.
 - 실제 Google 서비스 계정과 스프레드시트가 제공되면 운영 배포 전에 테스트 참가자 하나를 등록하고, Sheets에 반영된 뒤 제외 요청이 네 탭에서 사라지는지 확인합니다. 이번 검증은 모의 Sheets REST 응답을 사용했습니다.

@@ -13,6 +13,8 @@ namespace BossTemplate
         internal bool Hovered { get; private set; }
         internal bool Focused { get; private set; }
 
+        internal void BindStar(Image image) => star = image;
+
         internal void SetStar(float opacity, float scale)
         {
             star.color = new Color(1, 1, 1, opacity);

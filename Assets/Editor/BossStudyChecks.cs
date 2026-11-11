@@ -7,6 +7,8 @@ using BossTemplate;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 
@@ -24,8 +26,8 @@ internal static class BossStudyChecks
     private static void RunSmoke()
     {
         if (EditorApplication.isPlayingOrWillChangePlaymode
-            || SceneManager.GetActiveScene().path != StudySceneEntry.StartPath)
-            throw new InvalidOperationException("Open BossStudyStart in Edit Mode before running the study smoke test.");
+            || SceneManager.GetActiveScene().path != StudySceneEntry.IntroPath)
+            throw new InvalidOperationException("Open BossStudyIntro in Edit Mode before running the study smoke test.");
         if (File.Exists(Path.Combine(Application.persistentDataPath, "boss-study-v1.json")))
             throw new InvalidOperationException("Use a test editor profile without existing study data.");
         File.WriteAllText(ReportPath, "RUNNING");
@@ -80,12 +82,60 @@ internal static class BossStudyChecks
 
     private static IEnumerator Smoke(StudySession study)
     {
-        Check(SceneManager.GetActiveScene().path == StudySceneEntry.StartPath && study.Screen == StudyScreen.Title,
-            "The start scene should show the title");
+        Check(SceneManager.GetActiveScene().path == StudySceneEntry.IntroPath && study.Screen == StudyScreen.Title,
+            "The intro scene should open on the main menu");
         Check(!UnityEngine.Object.FindAnyObjectByType<BossArena>(), "Start scene should have no arena");
-        study.OpenIntro();
+        var menu = GameObject.Find("메인 메뉴").transform;
+        var items = menu.Find("메뉴 항목");
+        var play = items.Find("게임 시작").GetComponent<Button>();
+        Check(play.GetComponentInChildren<Text>().text == "게임 시작", "New participant sees Start");
+        Canvas.ForceUpdateCanvases();
+        var corners = new Vector3[4];
+        var menuBounds = ((RectTransform)menu).rect;
+        foreach (string item in new[] { "게임 시작", "설정", "통계", "실험 약관" })
+        {
+            ((RectTransform)items.Find(item)).GetWorldCorners(corners);
+            Check(menuBounds.Contains(menu.InverseTransformPoint(corners[0]))
+                && menuBounds.Contains(menu.InverseTransformPoint(corners[2])), $"Menu item fits on screen: {item}");
+        }
+        foreach (string layer in new[] { "하늘", "안개", "먼 실루엣", "가까운 실루엣", "골렘" })
+            Check(menu.Find(layer).GetComponent<Image>().sprite, $"Menu art is linked: {layer}");
+        var sky = (RectTransform)menu.Find("하늘");
+        var golem = (RectTransform)menu.Find("골렘");
+        var mouse = InputSystem.AddDevice<Mouse>();
+        try
+        {
+            mouse.MakeCurrent();
+            InputState.Change(mouse, new MouseState { position = new Vector2(Screen.width * .95f, Screen.height * .85f) },
+                InputUpdateType.Dynamic);
+            yield return new WaitForSecondsRealtime(.2f);
+            Check(sky.anchoredPosition.x > 0 && golem.anchoredPosition.x > sky.anchoredPosition.x * 4,
+                "Mouse parallax moves the foreground farther than the sky");
+        }
+        finally
+        {
+            InputSystem.RemoveDevice(mouse);
+        }
+        var details = menu.Find("메뉴 상세");
+        var back = details.Find("돌아가기").GetComponent<Button>();
+        items.Find("설정").GetComponent<Button>().onClick.Invoke();
+        var menuVolume = details.GetComponentInChildren<Slider>();
+        float previousMenuVolume = menuVolume.value;
+        menuVolume.value = .4f;
+        Check(Mathf.Approximately(AudioListener.volume, .4f), "Settings changes master volume");
+        menuVolume.value = previousMenuVolume;
+        back.onClick.Invoke();
+        items.Find("통계").GetComponent<Button>().onClick.Invoke();
+        Check(Array.Exists(details.GetComponentsInChildren<Text>(), t => t.text.Contains("도전 횟수   0회")),
+            "Statistics shows the empty record");
+        back.onClick.Invoke();
+        items.Find("실험 약관").GetComponent<Button>().onClick.Invoke();
+        Check(Array.Exists(details.GetComponentsInChildren<Text>(), t => t.text.Contains(study.Protocol.consentNotice)),
+            "Terms shows the configured consent notice");
+        back.onClick.Invoke();
+        play.onClick.Invoke();
         yield return Until(() => SceneManager.GetActiveScene().path == StudySceneEntry.IntroPath
-            && study.Screen == StudyScreen.Consent, "Consent must open in the separate intro scene");
+            && study.Screen == StudyScreen.Consent, "Start opens consent from the main menu");
         var panel = UnityEngine.Object.FindAnyObjectByType<StudyPanel>();
         var consentButton = Array.Find(panel.GetComponentsInChildren<UnityEngine.UI.Button>(),
             button => button.name == "연구 참여에 동의하고 시작");
@@ -134,20 +184,38 @@ internal static class BossStudyChecks
         arena.Player.Health.Hit(6, 0, true, BossPattern.dash);
         arena.Boss.Health.Hit(arena.Boss.Health.Current);
         yield return Until(() => arena.Boss.Phase == 2 && !arena.Boss.Transitioning, "Natural phase transition");
+        var hands = (SpriteRenderer[])typeof(ArenaBoss).GetField("battleFists", BindingFlags.Instance | BindingFlags.NonPublic)
+            .GetValue(arena.Boss);
+        var bossHealth = arena.Boss.Health;
+        arena.Player.Health.InvulnerableUntil = Time.time + 12;
+        bossHealth.Hit(bossHealth.Maximum * .69f);
+        yield return null;
+        Check(hands[0].enabled && hands[1].enabled && !hands[2].enabled && !hands[3].enabled,
+            "Phase two has two hands above the threshold");
+        bossHealth.Hit(bossHealth.Maximum * .02f);
+        yield return Until(() => hands[2].enabled && hands[3].enabled, "Two more hands spawn below 30 percent");
+        yield return Until(() => arena.Boss.Intent == "네 손 교차 내려찍기", "Four-hand slam attacks");
+        yield return Until(() => arena.Boss.Intent == "네 손 협공", "Four-hand pincer attacks");
         arena.SkipCurrentPhase();
-        yield return Until(() => study.Screen == StudyScreen.Survey && SceneManager.GetActiveScene().path == StudySceneEntry.ReviewPath,
-            "Skipping phase two in study mode clears attempt 1 despite target 7 and opens the review scene");
-        Check(!UnityEngine.Object.FindAnyObjectByType<BossArena>(), "Review scene should have no arena");
+        yield return Until(() => study.Screen == StudyScreen.Survey && SceneManager.GetActiveScene().path == StudySceneEntry.GamePath,
+            "Clearing the boss opens the rating panel in the game scene");
+        Check(arena && arena.Boss.Health.Dead && study.Frozen && Time.timeScale == 0,
+            "Rating preserves the defeated boss and freezes gameplay");
+        study.TogglePause();
+        Check(study.Frozen && !study.Paused, "Escape cannot replace the victory panel with the pause menu");
         saved = storage.Load();
         Check(saved.pending.Count == 1 && saved.recent[0].cleared && saved.recent[0].attempt_number == 1, "Durable attempt record");
         Check(saved.recent[0].pattern_stats[(int)BossPattern.dash].average_damage == 6, "Measured pattern damage");
         Check(saved.recent[0].damage_dealt > 0 && saved.recent[0].boss_hp_remaining == 0, "Both boss phases recorded");
         Check(saved.recent[0].boss_phase == 2 && saved.recent[0].phase_progress_percent == 100, "Cleared phase progress");
+        Check(saved.recent[0].pattern_stats[(int)BossPattern.fist_cross_slam].executions == 1
+            && saved.recent[0].pattern_stats[(int)BossPattern.fist_pincer_combo].executions == 1,
+            "Four-hand patterns are tracked independently");
         yield return Until(() => study.SyncStatus.Length > 0, "Offline attempt transmission");
         study.Protocol.apiUrl = Endpoint;
         yield return Until(() => !study.HasPending, "Automatic retry after connectivity returns");
-        var review = UnityEngine.Object.FindAnyObjectByType<StudyPanel>();
-        var ratings = new SerializedObject(review).FindProperty("ratings");
+        var ratingPanel = UnityEngine.Object.FindAnyObjectByType<StudyPanel>();
+        var ratings = new SerializedObject(ratingPanel).FindProperty("ratings");
         Check(ratings.arraySize == 5, "Five star ratings");
         var stars = new Image[ratings.arraySize];
         var buttons = new StudyRatingButton[ratings.arraySize];
@@ -167,7 +235,10 @@ internal static class BossStudyChecks
         buttons[4].OnPointerClick(pointer);
         yield return Until(() => stars[4].color.a == 1 && stars[4].rectTransform.localScale.x > 1,
             "Click expands the selected star");
-        yield return Until(() => study.Screen == StudyScreen.Debrief && !study.HasPending, "Persist rating on real FastAPI");
+        yield return Until(() => study.Screen == StudyScreen.Debrief && SceneManager.GetActiveScene().path == StudySceneEntry.ReviewPath
+            && !study.HasPending && !study.Frozen, "Persist rating, restore time and open the debrief");
+        Check(Time.timeScale == 1 && !UnityEngine.Object.FindAnyObjectByType<BossArena>(), "Debrief unloads the frozen arena");
+        var review = UnityEngine.Object.FindAnyObjectByType<StudyPanel>();
         var replay = Array.Find(review.GetComponentsInChildren<UnityEngine.UI.Button>(),
             button => button.name == "다시 하기");
         Check(replay && replay.interactable, "Replay should be available after sync");
@@ -182,9 +253,73 @@ internal static class BossStudyChecks
         yield return Until(() => study.Screen == StudyScreen.Ready && SceneManager.GetActiveScene().path == StudySceneEntry.GamePath,
             "Replay should register and start a new study");
         Check(study.ParticipantId != participant, "Replay must have a fresh participant identity");
-        study.StopStudy();
-        yield return Until(() => study.Screen == StudyScreen.Debrief && SceneManager.GetActiveScene().path == StudySceneEntry.ReviewPath
-            && !study.HasPending, "Stopping without a clear should sync and open the debrief directly");
+        arena = UnityEngine.Object.FindAnyObjectByType<BossArena>();
+        study.BeginAttempt();
+        arena.Player.Health.Hit(arena.Player.Health.Current);
+        yield return Until(() => study.Screen == StudyScreen.Ready && study.Deaths == 1, "Defeat increments the death count");
+        study.BeginAttempt();
+        Check(study.InCombat && !arena.CombatEnded, "Retry starts live combat");
+        var gamePanel = UnityEngine.Object.FindAnyObjectByType<StudyPanel>();
+        var keyboard = InputSystem.AddDevice<Keyboard>();
+        void PressEscape()
+        {
+            // Feed keyboard state directly because batch mode has no focused Game view.
+            keyboard.MakeCurrent();
+            InputState.Change(keyboard, new KeyboardState(Key.Escape), InputUpdateType.Dynamic);
+            typeof(StudyPanel).GetMethod("Update", BindingFlags.Instance | BindingFlags.NonPublic).Invoke(gamePanel, null);
+            InputState.Change(keyboard, new KeyboardState(), InputUpdateType.Dynamic);
+        }
+        try
+        {
+            PressEscape();
+            Check(study.Paused && Time.timeScale == 0 && AudioListener.pause, "Escape pauses gameplay and sound");
+            Check(Array.Exists(gamePanel.GetComponentsInChildren<Text>(), text => text.text == "죽은 횟수  1회"),
+                "Pause menu shows the participant death count");
+            var volume = gamePanel.GetComponentInChildren<Slider>();
+            float previousVolume = volume.value;
+            volume.value = .35f;
+            Check(Mathf.Approximately(AudioListener.volume, .35f), "Slider controls master volume");
+            volume.value = previousVolume;
+            var resume = Array.Find(gamePanel.GetComponentsInChildren<Button>(), button => button.name == "게임으로 돌아가기");
+            resume.onClick.Invoke();
+            Check(study.InCombat && !study.Paused && Time.timeScale == 1 && !AudioListener.pause,
+                "Resume returns to the same fight");
+            yield return null;
+            PressEscape();
+            Check(study.Paused, "Escape reopens the pause menu");
+            float activeTime = storage.Load().active.duration_seconds;
+            yield return new WaitForSecondsRealtime(.25f);
+            var returnToMenu = Array.Find(gamePanel.GetComponentsInChildren<Button>(), button => button.name == "메뉴로 돌아가기");
+            returnToMenu.onClick.Invoke();
+            yield return Until(() => study.Screen == StudyScreen.Title && SceneManager.GetActiveScene().path == StudySceneEntry.IntroPath
+                && GameObject.Find("메인 메뉴"),
+                "Pause menu returns to the title");
+            saved = storage.Load();
+            Check(Time.timeScale == 1 && !AudioListener.pause && saved.deaths == 1
+                && saved.lastAttempt.result == "interrupted" && Mathf.Approximately(saved.lastAttempt.duration_seconds, activeTime),
+                "Menu return restores time and sound and saves the attempt without pause time");
+        }
+        finally
+        {
+            InputSystem.RemoveDevice(keyboard);
+        }
+        var continueButton = GameObject.Find("메인 메뉴").transform.Find("메뉴 항목/게임 시작").GetComponent<Button>();
+        Check(continueButton.GetComponentInChildren<Text>().text == "이어하기", "An active participant sees Continue");
+        continueButton.onClick.Invoke();
+        yield return Until(() => study.Screen == StudyScreen.Ready && SceneManager.GetActiveScene().path == StudySceneEntry.GamePath,
+            "Start resumes the same participant");
+        Check(storage.Load().attempts == 2 && study.Deaths == 1, "Menu return preserves attempts and deaths");
+        arena = UnityEngine.Object.FindAnyObjectByType<BossArena>();
+        study.BeginAttempt();
+        arena.SkipCurrentPhase();
+        yield return Until(() => arena.Boss.Phase == 2 && !arena.Boss.Transitioning, "Second study enters phase two");
+        arena.SkipCurrentPhase();
+        yield return Until(() => study.Screen == StudyScreen.Survey && SceneManager.GetActiveScene().path == StudySceneEntry.GamePath,
+            "Second study can still clear");
+        var secondPanel = UnityEngine.Object.FindAnyObjectByType<StudyPanel>();
+        var skipRating = (Button)new SerializedObject(secondPanel).FindProperty("skipRating").objectReferenceValue;
+        skipRating.onClick.Invoke();
+        yield return Until(() => study.Screen == StudyScreen.Debrief && !study.HasPending, "Sync second study");
         study.Withdraw();
         yield return Until(() => study.Screen == StudyScreen.Withdrawal && !study.WithdrawalPending, "Confirmed withdrawal");
         saved = storage.Load();

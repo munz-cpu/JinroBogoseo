@@ -7,7 +7,8 @@ namespace BossTemplate
     {
         ground_barrage, fault_line, crossfire, ceiling_collapse, stone_nova, dash, spread,
         skipping_rocks, teleport_slam, rock_rain, fist_slams, air_hockey, fist_sweep, throw_mines, rolling_rocks,
-        fist_jab, fist_uppercut, fist_backhand, fist_clap, fist_double_slam
+        fist_jab, fist_uppercut, fist_backhand, fist_clap, fist_double_slam,
+        fist_cross_slam, fist_pincer_combo
     }
 
     [Serializable] internal sealed class ParticipantRecord
@@ -103,7 +104,7 @@ namespace BossTemplate
         public StudyProtocol protocol;
         public StudyAssignment assignment;
         public string token;
-        public int attempts;
+        public int attempts, deaths;
         public AttemptRecord active;
         public AttemptRecord lastAttempt;
         public List<AttemptRecord> recent = new List<AttemptRecord>();

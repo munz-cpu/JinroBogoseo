@@ -31,6 +31,10 @@ namespace BossTemplate
         private const float FallingRockHoverHeight = 7.8f;
         private const float HealingMineChance = .3f;
         private const float FistHeight = 4.2f;
+        private const int OriginalFistCount = 2;
+        private const int TotalFistCount = 4;
+        private const float EnrageHealthRatio = .30f;
+        private const float EnrageRevealDuration = .55f;
         private bool pauseRain;
         internal bool Hidden { get; private set; }
         private BossArena arena;
@@ -46,11 +50,13 @@ namespace BossTemplate
         private float warningTilt, poseDuration;
         private float giantFollowVelocity;
         [SerializeField, InspectorName("골렘 주먹 렌더러")] private SpriteRenderer[] fists;
-        private readonly float[] fistFlashUntil = new float[2];
-        private readonly bool[] fistBusy = new bool[2];
+        private readonly SpriteRenderer[] battleFists = new SpriteRenderer[TotalFistCount];
+        private readonly float[] fistFlashUntil = new float[TotalFistCount];
+        private readonly bool[] fistBusy = new bool[TotalFistCount];
         private bool holdBothFists;
-        private readonly float[] fistWindupUntil = new float[2];
-        private float fistOrbitStart;
+        private readonly float[] fistWindupUntil = new float[TotalFistCount];
+        private float fistOrbitStart, enragedAt;
+        private bool enraged;
         private static readonly Color FistWarningColor = new Color(1, .52f, .23f);
         private static readonly Color FistReleaseColor = new Color(1, .86f, .53f);
         internal float PhaseTwoMaximum => phaseTwoHealth * (arena.Study ? arena.Study.BossHealthFactor : 1);
@@ -73,11 +79,18 @@ namespace BossTemplate
                 neutralSortingOrder = appearance.sortingOrder;
                 neutralColor = appearance.color;
             }
-            foreach (var fist in fists)
+            for (int i = 0; i < OriginalFistCount; i++)
             {
+                SpriteRenderer fist = fists[i];
                 fist.sprite = fistSprite ? fistSprite : body.sprite;
                 fist.transform.localScale = Vector3.one * (FistHeight / fist.sprite.bounds.size.y);
                 fist.sharedMaterial = appearance ? appearance.sharedMaterial : body.sharedMaterial;
+                battleFists[i] = fist;
+                var reinforcement = Instantiate(fist, fist.transform.parent);
+                reinforcement.name = i == 0 ? "왼쪽 추가 주먹" : "오른쪽 추가 주먹";
+                reinforcement.transform.localScale *= .86f;
+                reinforcement.enabled = false;
+                battleFists[i + OriginalFistCount] = reinforcement;
             }
         }
 
@@ -87,14 +100,15 @@ namespace BossTemplate
             Phase = 1;
             Transitioning = false;
             giantFollowVelocity = 0;
-            fistBusy[0] = fistBusy[1] = false;
-            fistWindupUntil[0] = fistWindupUntil[1] = 0;
             hockeyHitstopUntil = 0;
             holdBothFists = false;
-            foreach (var fist in fists)
+            enraged = false;
+            for (int i = 0; i < battleFists.Length; i++)
             {
-                fist.enabled = false;
-                fist.transform.rotation = Quaternion.identity;
+                fistBusy[i] = false;
+                fistWindupUntil[i] = fistFlashUntil[i] = 0;
+                battleFists[i].enabled = false;
+                battleFists[i].transform.rotation = Quaternion.identity;
             }
             if (appearance)
             {
@@ -201,16 +215,18 @@ namespace BossTemplate
 
         private Vector2 FistOrbitPosition(int index)
         {
-            const float sideOffset = 9f;
-            const float horizontalRadius = 1.6f;
+            bool reinforcement = index >= OriginalFistCount;
+            float sideOffset = reinforcement ? 5.5f : 9f;
+            float horizontalRadius = reinforcement ? 1.1f : 1.6f;
             const float verticalRadius = 1.2f;
             const float orbitPeriod = 5f;
             Bounds bounds = arena.GroundBounds;
-            float clearance = sideOffset + horizontalRadius + FistHitBounds(fists[index]).extents.x;
+            float clearance = Mathf.Min(bounds.extents.x, sideOffset + horizontalRadius + FistHitBounds(battleFists[index]).extents.x);
             float centerX = Mathf.Clamp(transform.position.x, bounds.min.x + clearance, bounds.max.x - clearance);
-            centerX += index == 0 ? -sideOffset : sideOffset;
-            float centerY = arena.GroundY + FistHeight * .5f + .35f + verticalRadius;
-            float angle = (Time.time - fistOrbitStart) * (2 * Mathf.PI / orbitPeriod) + (1 - index) * Mathf.PI;
+            centerX += index % 2 == 0 ? -sideOffset : sideOffset;
+            float centerY = arena.GroundY + FistHeight * .5f + .35f + verticalRadius + (reinforcement ? 3.1f : 0);
+            float angle = (Time.time - fistOrbitStart) * (2 * Mathf.PI / orbitPeriod) + (1 - index) * Mathf.PI
+                + (reinforcement ? Mathf.PI * .5f : 0);
             return new Vector2(centerX + Mathf.Cos(angle) * horizontalRadius, centerY + Mathf.Sin(angle) * verticalRadius);
         }
 
@@ -218,10 +234,10 @@ namespace BossTemplate
         {
             hitIndex = -1;
             float first = float.PositiveInfinity;
-            for (int i = 0; i < fists.Length; i++)
+            for (int i = 0; i < battleFists.Length; i++)
             {
-                if (!fists[i].enabled) continue;
-                float time = ArenaProjectile.BoundsContactTime(FistHitBounds(fists[i]), from, to);
+                if (!battleFists[i].enabled) continue;
+                float time = ArenaProjectile.BoundsContactTime(FistHitBounds(battleFists[i]), from, to);
                 if (time >= first) continue;
                 first = time;
                 hitIndex = i;
@@ -261,27 +277,37 @@ namespace BossTemplate
 
         private void LateUpdate()
         {
-            if (!Health) return;
+            if (!Health || arena.Frozen) return;
             if (Phase == 2)
             {
                 if (!arena.Finished && Time.deltaTime > 0)
                 {
+                    if (!enraged && Health.Current < Health.Maximum * EnrageHealthRatio) Enrage();
                     Vector3 position = transform.position;
                     position.x = Mathf.SmoothDamp(position.x, PlayerPosition.x, ref giantFollowVelocity, 1.25f, 2.2f);
                     transform.position = position;
                 }
-                for (int i = 0; i < fists.Length; i++)
+                for (int i = 0; i < battleFists.Length; i++)
                 {
-                    if (arena.Finished) fists[i].enabled = false;
-                    if (!fists[i].enabled) continue;
-                    if (!holdBothFists && !fistBusy[i]) fists[i].transform.position = FistOrbitPosition(i);
+                    SpriteRenderer fist = battleFists[i];
+                    if (arena.Finished) fist.enabled = false;
+                    if (!fist.enabled) continue;
+                    bool reinforcement = i >= OriginalFistCount;
+                    if (!fistBusy[i] && (!holdBothFists || reinforcement))
+                    {
+                        Vector2 orbit = FistOrbitPosition(i);
+                        fist.transform.position = reinforcement
+                            ? Vector2.Lerp(new Vector2(transform.position.x, arena.GroundY + 1), orbit,
+                                Mathf.SmoothStep(0, 1, (Time.time - enragedAt) / EnrageRevealDuration))
+                            : orbit;
+                    }
                     float windupRemaining = fistWindupUntil[i] - Time.time;
                     Color color = windupRemaining > 0
                         ? Color.Lerp(FistReleaseColor, FistWarningColor, windupRemaining / .22f)
-                        : Color.white;
+                        : reinforcement ? FistReleaseColor : Color.white;
                     if (Time.time < fistFlashUntil[i])
                         color = Color.Lerp(color, ArenaProjectile.HitFlashColor, windupRemaining > 0 ? .4f : 1f);
-                    fists[i].color = color;
+                    fist.color = color;
                 }
                 return;
             }
@@ -301,6 +327,22 @@ namespace BossTemplate
                 frame = 0;
             }
             appearance.sprite = motion[loopMotion ? frame % motion.Length : Mathf.Min(frame, motion.Length - 1)];
+        }
+
+        private void Enrage()
+        {
+            enraged = true;
+            enragedAt = Time.time;
+            if (appearance) appearance.color *= new Color(1, .68f, .51f);
+            for (int i = OriginalFistCount; i < battleFists.Length; i++)
+            {
+                battleFists[i].flipX = i % 2 != 0;
+                battleFists[i].enabled = true;
+            }
+            var impact = new Vector2(transform.position.x, arena.GroundY);
+            arena.ShowRockLandingDust(impact, 6, playSound: false);
+            arena.ShakeImpact(impact, Vector2.down * .35f);
+            arena.PlayEffect(fistSlamSound);
         }
 
         private IEnumerator FightPhaseOne()

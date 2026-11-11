@@ -6,11 +6,11 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/Scenes/BossStudyStart.unity
-    guid: 370ed138093a4be1a9e6042d02fdf17b
-  - enabled: 1
     path: Assets/Scenes/BossStudyIntro.unity
     guid: 5de64791f16249c4826ba72c2a58b33a
+  - enabled: 1
+    path: Assets/Scenes/BossStudyStart.unity
+    guid: 370ed138093a4be1a9e6042d02fdf17b
   - enabled: 1
     path: Assets/Scenes/BossStudyGame.unity
     guid: 112af526485f480d8f5b88c9f340e829

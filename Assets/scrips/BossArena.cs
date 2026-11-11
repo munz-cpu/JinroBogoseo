@@ -47,6 +47,7 @@ namespace BossTemplate
         public ArenaBoss Boss => boss;
         internal StudySession Study { get; private set; }
         public bool ResearchActive => Study != null;
+        internal bool Frozen => Study && Study.Frozen;
         public bool Finished => (Study && !Study.InCombat) || CombatEnded;
         internal bool CombatEnded => Player.Health.Dead || (Boss.Phase == 2 && Boss.Health.Dead);
         internal float StudyBossHealthRemaining
@@ -192,7 +193,7 @@ namespace BossTemplate
 #if UNITY_EDITOR
         public void SkipCurrentPhase()
         {
-            if (Finished || Boss.Transitioning) return;
+            if (Frozen || Finished || Boss.Transitioning) return;
             Boss.Health.InvulnerableUntil = 0;
             Boss.Health.Hit(Boss.Health.Current);
             AdvancePhaseIfDefeated();
@@ -212,7 +213,7 @@ namespace BossTemplate
 
         private void AdvancePhaseIfDefeated()
         {
-            if (Finished || Boss.Phase != 1 || Boss.Transitioning || !Boss.Health.Dead) return;
+            if (Frozen || Finished || Boss.Phase != 1 || Boss.Transitioning || !Boss.Health.Dead) return;
             ClearAttacks();
             Boss.BeginPhaseTwo();
         }

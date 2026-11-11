@@ -31,20 +31,33 @@ namespace BossTemplate
         private StudySave state;
         private StudyPanel panel;
         private float startTime, checkpointAt, nextSend;
+        private float pausedAt, previousTimeScale;
+        private bool previousAudioPause;
+        private bool victoryFrozen;
+        private int resumedFrame = -1;
         private int failures;
         private bool sending, fatal, permanentError, changingScene, quitting;
         private StudyStage stage;
         private string syncStatus = "";
         internal StudyScreen Screen { get; private set; }
-        internal bool ConsumesShot(Vector2 pointer) => panel && panel.ConsumesShot(pointer);
         internal bool InCombat => Screen == StudyScreen.Combat;
+        internal bool Paused { get; private set; }
+        internal bool Frozen => Paused || victoryFrozen;
+        internal bool BlocksGameplayInput => Frozen || resumedFrame == Time.frameCount;
+        internal int Deaths => state.deaths;
+        internal int Attempts => state.attempts;
+        internal AttemptRecord LastAttempt => state.lastAttempt;
+        internal bool HasContinuation => state.participant != null && (!state.debrief || HasPending);
+        private bool CanPause => !fatal && !changingScene && (Screen == StudyScreen.Ready
+            || InCombat && !arena.CombatEnded);
+        private float ElapsedSeconds => (Paused ? pausedAt : Time.realtimeSinceStartup) - startTime;
         internal bool Cleared => state.cleared;
         internal bool LostLast => state.recent.Count > 0 && state.recent[state.recent.Count - 1].result == "defeat";
         internal bool WithdrawalPending => state.withdrawalPending;
         // A save written before enrollment can deserialize with an empty protocol object.
         internal StudyProtocol Protocol => (state?.participant != null ? state.protocol : null) ?? asset.protocol;
         internal bool HasPending => state?.pending.Count > 0;
-        internal bool CanReplay => Screen == StudyScreen.Debrief && !changingScene && !HasPending;
+        internal bool CanReplay => (Screen is StudyScreen.Debrief or StudyScreen.Title) && state.debrief && !changingScene && !HasPending;
         internal string SyncStatus => syncStatus;
         internal string ParticipantId => state.participant?.participant_id ?? state.withdrawalParticipantId ?? "";
         internal float BossHealthFactor => state?.active?.difficulty.boss_health ?? 1;
@@ -53,7 +66,7 @@ namespace BossTemplate
 
 #if UNITY_EDITOR
         internal StudySave InspectorState => state;
-        internal float InspectorElapsedSeconds => Time.realtimeSinceStartup - startTime;
+        internal float InspectorElapsedSeconds => ElapsedSeconds;
         internal float InspectorBossHealthRemaining => arena ? arena.StudyBossHealthRemaining : 1;
         internal int InspectorBossPhase => arena && !arena.Boss.Transitioning ? arena.Boss.Phase : 0;
         internal BossPattern? InspectorPreviousPattern { get; private set; }
@@ -62,12 +75,14 @@ namespace BossTemplate
         internal void Activate()
         {
             Current = this;
+            StudyPauseMenu.LoadVolume();
             DontDestroyOnLoad(gameObject);
             gameObject.SetActive(true);
         }
 
         internal void EnterScene(StudyStage sceneStage, BossArena owner, StudySettings settings, StudyPanel scenePanel)
         {
+            if (sceneStage != StudyStage.Game) ReleaseVictory();
             stage = sceneStage;
             arena = owner;
             panel = scenePanel;
@@ -87,9 +102,10 @@ namespace BossTemplate
                 if (state.active != null)
                 {
                     // The last durable checkpoint marks the end of a process that could not shut down cleanly.
-                    Finish("interrupted", useCheckpoint: true);
+                    Finish("interrupted", useCheckpoint: true, nextScreen: StudyScreen.Title);
                 }
-                else RestoreScreen();
+                else if (state.withdrawalPending || state.withdrawn) RestoreScreen();
+                else Show(StudyScreen.Title);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
             {
@@ -110,17 +126,27 @@ namespace BossTemplate
             }
             else if (state.assignment != null) Show(StudyScreen.Ready);
             else if (state.participant != null) Show(StudyScreen.Waiting);
-            else Show(stage == StudyStage.Start ? StudyScreen.Title : StudyScreen.Consent);
+            else Show(StudyScreen.Title);
         }
 
         internal void OpenIntro()
         {
-            if (Screen == StudyScreen.Title) Show(StudyScreen.Consent);
+            if (Screen != StudyScreen.Title || changingScene) return;
+            if (CanReplay) StartNewStudy();
+            else if (state.participant != null) RestoreScreen();
+            else Show(StudyScreen.Consent);
+        }
+
+        internal void BackToTitle()
+        {
+            if (!changingScene && (Screen is StudyScreen.Consent or StudyScreen.Waiting or StudyScreen.Declined))
+                Show(StudyScreen.Title);
         }
 
         internal void Enroll()
         {
             if (Screen != StudyScreen.Consent || !Protocol.IsConfigured) return;
+            state.declined = false;
             state.protocol = JsonUtility.FromJson<StudyProtocol>(JsonUtility.ToJson(asset.protocol));
             state.participant = new ParticipantRecord
             {
@@ -150,7 +176,7 @@ namespace BossTemplate
 
         internal void BeginAttempt()
         {
-            if (Screen != StudyScreen.Ready || state.assignment == null || !arena || changingScene) return;
+            if (Screen != StudyScreen.Ready || state.assignment == null || !arena || changingScene || Paused) return;
             string now = Now();
             int number = state.attempts + 1;
             var difficulty = AdaptiveDifficulty.Choose(Protocol, state.recent, number,
@@ -220,22 +246,51 @@ namespace BossTemplate
             }
         }
 
-        internal void StopStudy()
+        internal void TogglePause()
         {
+            if (Paused)
+            {
+                Resume();
+                return;
+            }
+            if (!CanPause) return;
+            pausedAt = Time.realtimeSinceStartup;
+            previousTimeScale = Time.timeScale;
+            previousAudioPause = AudioListener.pause;
+            Paused = true;
+            Time.timeScale = 0;
+            AudioListener.pause = true;
             if (InCombat)
             {
-                Finish(arena.CombatEnded ? (arena.Player.Health.Dead ? "defeat" : "cleared") : "stopped");
-                if (Screen != StudyScreen.Ready) return;
+                Sample();
+                if (!Persist()) return;
             }
-            if (Screen != StudyScreen.Ready) return;
-            CloseStudy(null);
-            if (Persist()) Show(StudyScreen.Debrief);
+            panel.ShowPause(true);
+        }
+
+        private void Resume()
+        {
+            if (!Paused) return;
+            Paused = false;
+            resumedFrame = Time.frameCount;
+            startTime += Time.realtimeSinceStartup - pausedAt;
+            checkpointAt = Time.realtimeSinceStartup + 5;
+            Time.timeScale = previousTimeScale;
+            AudioListener.pause = previousAudioPause;
+            if (panel) panel.ShowPause(false);
+        }
+
+        internal void ReturnToMenu()
+        {
+            if (!Paused) return;
+            if (InCombat) Finish("interrupted", nextScreen: StudyScreen.Title);
+            else Show(StudyScreen.Title);
         }
 
         private void Sample()
         {
             var attempt = state.active;
-            attempt.duration_seconds = Time.realtimeSinceStartup - startTime;
+            attempt.duration_seconds = ElapsedSeconds;
             string now = Now();
             attempt.ended_at = string.CompareOrdinal(now, attempt.started_at) >= 0 ? now : attempt.started_at;
             attempt.boss_hp_remaining = arena.StudyBossHealthRemaining;
@@ -244,7 +299,7 @@ namespace BossTemplate
             attempt.phase_progress_percent = 100 * Mathf.Clamp01(1 - health.Current / health.Maximum);
         }
 
-        private void Finish(string result, bool useCheckpoint = false)
+        private void Finish(string result, bool useCheckpoint = false, StudyScreen? nextScreen = null)
         {
             if (!useCheckpoint) Sample();
             var attempt = state.active;
@@ -260,18 +315,36 @@ namespace BossTemplate
             state.lastAttempt = attempt;
             state.cleared = attempt.cleared;
             state.surveyDue = attempt.cleared;
+            if (result == "defeat") state.deaths++;
             if (result is "defeat" or "cleared")
             {
                 state.recent.Add(attempt);
                 if (state.recent.Count > 4) state.recent.RemoveAt(0);
             }
             Enqueue("attempts", attempt);
-            if (result == "stopped") CloseStudy(null);
             if (Persist())
             {
-                if (arena) arena.EndStudyFight();
-                RestoreScreen();
+                if (arena)
+                {
+                    if (attempt.cleared && !quitting && panel.HasVictoryPanel)
+                    {
+                        previousTimeScale = Time.timeScale;
+                        victoryFrozen = true;
+                        Time.timeScale = 0;
+                        arena.Boss.StopAllCoroutines();
+                    }
+                    else arena.EndStudyFight();
+                }
+                if (nextScreen.HasValue) Show(nextScreen.Value);
+                else RestoreScreen();
             }
+        }
+
+        private void ReleaseVictory()
+        {
+            if (!victoryFrozen) return;
+            victoryFrozen = false;
+            Time.timeScale = previousTimeScale;
         }
 
         internal void SubmitRating(int? rating)
@@ -334,6 +407,7 @@ namespace BossTemplate
             state.assignment = null;
             state.protocol = null;
             state.attempts = 0;
+            state.deaths = 0;
             state.cleared = state.debrief = state.surveyDue = false;
         }
 
@@ -373,9 +447,9 @@ namespace BossTemplate
         private void Update()
         {
             if (fatal || state == null) return;
-            if (InCombat && arena.CombatEnded)
+            if (InCombat && !Paused && arena.CombatEnded)
                 Finish(arena.Player.Health.Dead ? "defeat" : "cleared");
-            if (InCombat && Time.realtimeSinceStartup >= checkpointAt)
+            if (InCombat && !Paused && Time.realtimeSinceStartup >= checkpointAt)
             {
                 Sample();
                 if (!Persist()) return;
@@ -439,7 +513,7 @@ namespace BossTemplate
                     if (Persist())
                     {
                         Retry();
-                        if (registering || withdrawing) RestoreScreen();
+                        if (withdrawing || registering && Screen != StudyScreen.Title) RestoreScreen();
                     }
                 }
                 else if (!fatal && !(state.withdrawalPending && pending != null))
@@ -469,18 +543,21 @@ namespace BossTemplate
 
         private void Show(StudyScreen screen)
         {
+            Resume();
             Screen = screen;
             if (quitting || changingScene) return;
             var destination = screen switch
             {
                 StudyScreen.Ready or StudyScreen.Combat => StudyStage.Game,
+                StudyScreen.Survey when victoryFrozen => StudyStage.Game,
                 StudyScreen.Survey or StudyScreen.Debrief or StudyScreen.Withdrawal => StudyStage.Review,
                 StudyScreen.Consent or StudyScreen.Waiting or StudyScreen.Declined => StudyStage.Intro,
                 StudyScreen.Error => stage,
-                _ => StudyStage.Start
+                _ => StudyStage.Intro
             };
             if (destination == stage)
             {
+                if (screen != StudyScreen.Survey) ReleaseVictory();
                 panel.Render(screen);
                 return;
             }
@@ -495,6 +572,7 @@ namespace BossTemplate
             {
                 Debug.LogError("Study scene is missing from Build Settings: " + path);
                 fatal = true;
+                ReleaseVictory();
                 Screen = StudyScreen.Error;
                 panel.Render(Screen);
                 return;
@@ -524,6 +602,8 @@ namespace BossTemplate
 
         private void OnDestroy()
         {
+            Resume();
+            ReleaseVictory();
             if (Current == this) Current = null;
         }
     }

@@ -1,18 +1,24 @@
 using System.Collections;
 using UnityEngine;
 using UnityEngine.Events;
+using UnityEngine.InputSystem;
 using UnityEngine.UI;
 
 namespace BossTemplate
 {
+    [DefaultExecutionOrder(-100)]
     internal sealed class StudyPanel : MonoBehaviour
     {
         [SerializeField] private GameObject[] screens;
         [SerializeField] private Button start, enroll, decline, reopen, cancelRegistration;
         [SerializeField] private Text consentNotice, consentDetails;
         [SerializeField] private Text readyTitle, attemptLabel;
-        [SerializeField] private Button attempt, stopFromReady, stopFromCombat;
+        [SerializeField] private Button attempt;
         [SerializeField] private Text ratingTitle, debrief, participant, contact, withdrawalMessage;
+        [SerializeField] private Font menuFont;
+        [SerializeField] private Sprite[] menuBackground;
+        [SerializeField] private Sprite menuGolem;
+        [SerializeField] private Sprite victoryStar;
         [SerializeField] private StudyRatingButton[] ratings;
         [SerializeField] private Button skipRating, withdraw, retry, replay;
         [SerializeField] private Text status;
@@ -21,10 +27,28 @@ namespace BossTemplate
         private StudySession session;
         private GameObject activeScreen;
         private bool submittingRating;
+        private StudyPauseMenu pauseMenu;
+        private StudyVictoryPanel victoryPanel;
+        private StudyMainMenu mainMenu;
+        internal bool HasVictoryPanel => victoryPanel != null;
 
         internal void Bind(StudySession owner, Font font)
         {
             session = owner;
+            if (menuGolem && menuBackground?.Length == 4)
+            {
+                mainMenu = new StudyMainMenu((RectTransform)transform, menuFont ? menuFont : consentNotice.font,
+                    font && !useSceneFonts ? font : consentNotice.font, menuBackground, menuGolem, session);
+                screens[(int)StudyScreen.Title] = mainMenu.Root.gameObject;
+            }
+            if (victoryStar)
+            {
+                victoryPanel = new StudyVictoryPanel((RectTransform)transform, font && !useSceneFonts ? font : readyTitle.font, victoryStar);
+                screens[(int)StudyScreen.Survey] = victoryPanel.Root.gameObject;
+                ratingTitle = victoryPanel.Title;
+                ratings = victoryPanel.Ratings;
+                skipRating = victoryPanel.Skip;
+            }
             foreach (var screen in screens)
                 if (screen) screen.SetActive(false);
             if (font && !useSceneFonts)
@@ -36,8 +60,6 @@ namespace BossTemplate
             Listen(reopen, session.ReopenConsent);
             Listen(cancelRegistration, session.Withdraw);
             Listen(attempt, session.BeginAttempt);
-            Listen(stopFromReady, session.StopStudy);
-            Listen(stopFromCombat, session.StopStudy);
             Listen(skipRating, () => session.SubmitRating(null));
             Listen(withdraw, session.Withdraw);
             Listen(retry, session.Retry);
@@ -54,9 +76,31 @@ namespace BossTemplate
             }
         }
 
-        internal bool ConsumesShot(Vector2 pointer) =>
-            stopFromCombat && stopFromCombat.gameObject.activeInHierarchy
-                && RectTransformUtility.RectangleContainsScreenPoint((RectTransform)stopFromCombat.transform, pointer);
+        private void Update()
+        {
+            if (!session) return;
+            bool escape = Keyboard.current?.escapeKey.wasPressedThisFrame == true;
+            if (attempt && escape) session.TogglePause();
+            if (mainMenu == null) return;
+            if (session.Screen == StudyScreen.Title)
+            {
+                mainMenu.Update();
+                if (escape) mainMenu.CloseDetails();
+            }
+            else if (escape) session.BackToTitle();
+        }
+
+        private void OnDestroy() => mainMenu?.Destroy();
+
+        internal void ShowPause(bool paused)
+        {
+            if (paused)
+            {
+                pauseMenu ??= new StudyPauseMenu((RectTransform)transform, readyTitle.font, session);
+                pauseMenu.Open(session.Deaths);
+            }
+            else pauseMenu?.Close();
+        }
 
         internal void Render(StudyScreen screen)
         {
@@ -86,6 +130,7 @@ namespace BossTemplate
                     attemptLabel.text = session.LostLast ? "다시 도전" : "도전 시작";
                     break;
                 case StudyScreen.Survey:
+                    victoryPanel?.Fit();
                     ratingTitle.text = session.Cleared ? "보스전 승리" : "도전 종료";
                     submittingRating = false;
                     foreach (var button in ratings) button.interactable = true;
@@ -105,6 +150,8 @@ namespace BossTemplate
             }
 
             activeScreen.SetActive(true);
+            mainMenu?.ShowBack(screen is StudyScreen.Consent or StudyScreen.Waiting or StudyScreen.Declined);
+            if (screen == StudyScreen.Title) mainMenu?.Show();
             if (activeScreen.TryGetComponent(out ScrollRect scroll))
             {
                 scroll.StopMovement();
@@ -149,6 +196,7 @@ namespace BossTemplate
 
         internal void RefreshStatus()
         {
+            if (session.Screen == StudyScreen.Title) mainMenu?.RefreshPlayLabel();
             if (replay) replay.interactable = session.CanReplay;
             if (!status) return;
             bool showNetwork = session.Screen is StudyScreen.Waiting or StudyScreen.Ready or StudyScreen.Survey or StudyScreen.Debrief

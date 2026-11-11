@@ -11,7 +11,7 @@ namespace BossTemplate
         private const float HockeyHitstopDuration = .065f;
         private readonly float[] hockeyStrikeTimes = new float[2];
         private float hockeyHitstopUntil;
-        internal bool HockeyHitstopActive => Time.unscaledTime < hockeyHitstopUntil;
+        internal bool HockeyHitstopActive => Time.time < hockeyHitstopUntil;
 
         private IEnumerator FightWithFists()
         {
@@ -19,7 +19,7 @@ namespace BossTemplate
             BossPattern? previous = null;
             if (arena.Study)
             {
-                while (!arena.Finished)
+                while (!arena.Finished && !enraged)
                 {
                     BossPattern pattern = arena.Study.Pick(StudySession.PhaseTwo, previous);
                     previous = pattern;
@@ -30,30 +30,42 @@ namespace BossTemplate
                     yield return RunFistPattern(pattern);
                     yield return new WaitForSeconds(.45f * arena.Parameters(pattern).interval);
                 }
-                yield break;
+            }
+            else
+            {
+                var patterns = (BossPattern[])StudySession.PhaseTwo.Clone();
+                while (!arena.Finished && !enraged)
+                {
+                    for (int i = patterns.Length - 1; i > 0; i--)
+                    {
+                        int pick = Random.Range(0, i + 1);
+                        (patterns[i], patterns[pick]) = (patterns[pick], patterns[i]);
+                    }
+                    if (patterns[0] == previous)
+                    {
+                        int pick = Random.Range(1, patterns.Length);
+                        (patterns[0], patterns[pick]) = (patterns[pick], patterns[0]);
+                    }
+
+                    foreach (var pattern in patterns)
+                    {
+                        if (arena.Finished || enraged) break;
+                        previous = pattern;
+                        yield return RunFistPattern(pattern);
+                        yield return new WaitForSeconds(.45f);
+                    }
+                }
             }
 
-            var patterns = (BossPattern[])StudySession.PhaseTwo.Clone();
+            if (arena.Finished) yield break;
+            yield return new WaitForSeconds(Mathf.Max(0, enragedAt + EnrageRevealDuration - Time.time));
+            BossPattern combo = BossPattern.fist_cross_slam;
             while (!arena.Finished)
             {
-                for (int i = patterns.Length - 1; i > 0; i--)
-                {
-                    int pick = Random.Range(0, i + 1);
-                    (patterns[i], patterns[pick]) = (patterns[pick], patterns[i]);
-                }
-                if (patterns[0] == previous)
-                {
-                    int pick = Random.Range(1, patterns.Length);
-                    (patterns[0], patterns[pick]) = (patterns[pick], patterns[0]);
-                }
-
-                foreach (var pattern in patterns)
-                {
-                    if (arena.Finished) yield break;
-                    previous = pattern;
-                    yield return RunFistPattern(pattern);
-                    yield return new WaitForSeconds(.45f);
-                }
+                arena.Study?.Executed(combo);
+                yield return RunFistPattern(combo);
+                yield return new WaitForSeconds(.24f * arena.Parameters(combo).interval);
+                combo = combo == BossPattern.fist_cross_slam ? BossPattern.fist_pincer_combo : BossPattern.fist_cross_slam;
             }
         }
 
@@ -90,6 +102,8 @@ namespace BossTemplate
             BossPattern.fist_backhand => FistBackhand(),
             BossPattern.fist_clap => FistClap(),
             BossPattern.fist_double_slam => DoubleFistSlam(),
+            BossPattern.fist_cross_slam => FourHandSlams(),
+            BossPattern.fist_pincer_combo => FourHandPincer(),
             _ => throw new System.ArgumentOutOfRangeException(nameof(pattern))
         };
 
@@ -200,7 +214,7 @@ namespace BossTemplate
                             if (i == receiver) y = Mathf.MoveTowards(y, receiveY, Time.deltaTime * 24);
                             if (i == receiver && secondsToHit <= HockeyWindupDuration)
                                 fistWindupUntil[i] = Time.time + secondsToHit;
-                            float timeSinceStrike = Time.unscaledTime - hockeyStrikeTimes[i];
+                            float timeSinceStrike = Time.time - hockeyStrikeTimes[i];
                             float stroke = timeSinceStrike < .15f
                                 ? Mathf.SmoothStep(HockeyStrikeReach, 0, timeSinceStrike / .15f)
                                 : i == receiver ? HockeyStrikeOffset(secondsToHit) : 0;
@@ -218,7 +232,7 @@ namespace BossTemplate
 
         internal void RecordHockeyStrike(int paddle, float impactY)
         {
-            hockeyHitstopUntil = Time.unscaledTime + HockeyHitstopDuration;
+            hockeyHitstopUntil = Time.time + HockeyHitstopDuration;
             hockeyStrikeTimes[paddle] = hockeyHitstopUntil;
             fistWindupUntil[paddle] = 0;
             fists[paddle].transform.position = HockeyPaddlePosition(paddle, AirHockeyCourt, impactY, HockeyStrikeReach);
@@ -447,16 +461,74 @@ namespace BossTemplate
         private float ClampPairedFistCenter(float x, float clearance)
         {
             Bounds bounds = arena.GroundBounds;
+            clearance = Mathf.Min(clearance, bounds.extents.x);
             return Mathf.Clamp(x, bounds.min.x + clearance, bounds.max.x - clearance);
+        }
+
+        private IEnumerator FourHandSlams()
+        {
+            const BossPattern pattern = BossPattern.fist_cross_slam;
+            Vector2 target = PlayerPosition;
+            Vector2 half = battleFists[0].bounds.extents;
+            float outer = half.x * 2.3f + 1.8f;
+            float inner = battleFists[2].bounds.extents.x + .35f;
+            float center = ClampPairedFistCenter(target.x, outer + half.x);
+            var outside = StartCoroutine(SlamPair(0, center, outer, target.y));
+            yield return new WaitForSeconds(.48f * arena.Parameters(pattern).interval);
+            if (arena.Finished) yield break;
+            yield return SlamPair(2, center, inner, target.y);
+            yield return outside;
+        }
+
+        private IEnumerator SlamPair(int first, float center, float spacing, float targetY)
+        {
+            const BossPattern pattern = BossPattern.fist_cross_slam;
+            const string attack = "네 손 교차 내려찍기";
+            float bottom = arena.GroundY + battleFists[first].bounds.extents.y;
+            float top = Mathf.Max(bottom + 7, targetY + 4);
+            float leftX = ClampFistX(center - spacing, battleFists[first]);
+            float rightX = ClampFistX(center + spacing, battleFists[first + 1]);
+            var left = StartCoroutine(StrikeFist(first, new Vector2(leftX, top), new Vector2(leftX, bottom),
+                pattern, attack, 33, 25));
+            yield return StrikeFist(first + 1, new Vector2(rightX, top), new Vector2(rightX, bottom),
+                pattern, attack, 33, 25);
+            yield return left;
+        }
+
+        private IEnumerator FourHandPincer()
+        {
+            const BossPattern pattern = BossPattern.fist_pincer_combo;
+            Vector2 target = PlayerPosition;
+            Vector2 half = battleFists[0].bounds.extents;
+            float outer = half.x + 5.1f;
+            float center = ClampPairedFistCenter(target.x, outer + half.x);
+            var sweep = StartCoroutine(PincerPair(0, center, outer, arena.GroundY + half.y, 0));
+            yield return new WaitForSeconds(.48f * arena.Parameters(pattern).interval);
+            if (arena.Finished) yield break;
+            yield return PincerPair(2, center, outer, Mathf.Max(arena.GroundY + 5.2f, target.y), 2.1f);
+            yield return sweep;
+        }
+
+        private IEnumerator PincerPair(int first, float center, float outer, float targetY, float approachHeight)
+        {
+            const BossPattern pattern = BossPattern.fist_pincer_combo;
+            const string attack = "네 손 협공";
+            float inner = battleFists[first].bounds.extents.x * .75f;
+            var left = StartCoroutine(StrikeFist(first, new Vector2(center - outer, targetY + approachHeight),
+                new Vector2(center - inner, targetY), pattern, attack, 31, 24));
+            yield return StrikeFist(first + 1, new Vector2(center + outer, targetY + approachHeight),
+                new Vector2(center + inner, targetY), pattern, attack, 31, 24);
+            yield return left;
         }
 
         private IEnumerator StrikeFist(int index, Vector2 start, Vector2 end, BossPattern pattern,
             string attack, float speed, float damage)
         {
             if (arena.Finished) yield break;
-            SpriteRenderer fist = fists[index];
+            SpriteRenderer fist = battleFists[index];
             var parameters = arena.Parameters(pattern);
-            float lead = .35f + Mathf.Clamp(.58f * parameters.interval, .5f, .72f);
+            bool combo = pattern is BossPattern.fist_cross_slam or BossPattern.fist_pincer_combo;
+            float lead = (combo ? .18f : .35f) + Mathf.Clamp(.58f * parameters.interval, .5f, .72f);
             Vector2 path = end - start;
             Vector2 direction = path.normalized;
             Vector2 size = fist.bounds.size * parameters.hitbox;
@@ -483,11 +555,11 @@ namespace BossTemplate
             Intent = attack;
             yield return MoveFist(fist, end, speed, damage, pattern);
             if (arena.Finished) yield break;
-            if (pattern == BossPattern.fist_double_slam)
+            if (pattern is BossPattern.fist_double_slam or BossPattern.fist_cross_slam)
             {
                 var impact = new Vector2(end.x, arena.GroundY);
                 arena.ShowRockLandingDust(impact, fist.bounds.size.x, playSound: false);
-                if (index == 0)
+                if (index % 2 == 0)
                 {
                     arena.ShakeImpact(impact, Vector2.down * .32f);
                     arena.PlayEffect(fistSlamSound);
@@ -498,7 +570,7 @@ namespace BossTemplate
 
         private IEnumerator WindUpFist(int index, Vector2 pose, Vector2 ready, float duration, float tilt = 0)
         {
-            SpriteRenderer fist = fists[index];
+            SpriteRenderer fist = battleFists[index];
             Vector2 origin = fist.transform.position;
             Quaternion initialRotation = fist.transform.rotation;
             Quaternion readyRotation = Quaternion.Euler(0, 0, tilt);
@@ -532,7 +604,7 @@ namespace BossTemplate
             float remaining = 1 - t;
             float eased = pattern switch
             {
-                BossPattern.fist_slams or BossPattern.fist_double_slam => t * t * t,
+                BossPattern.fist_slams or BossPattern.fist_double_slam or BossPattern.fist_cross_slam => t * t * t,
                 BossPattern.fist_jab or BossPattern.fist_uppercut => 1 - remaining * remaining * remaining,
                 _ => Mathf.SmoothStep(0, 1, t)
             };
@@ -556,6 +628,11 @@ namespace BossTemplate
             float elapsed = 0;
             while (!arena.Finished)
             {
+                if (arena.Frozen)
+                {
+                    yield return null;
+                    continue;
+                }
                 elapsed += Time.deltaTime;
                 float t = duration > 0 ? Mathf.Clamp01(elapsed / duration) : 1;
                 Vector2 previous = fist.transform.position;
@@ -581,7 +658,7 @@ namespace BossTemplate
 
         private IEnumerator ReturnFist(int index)
         {
-            SpriteRenderer fist = fists[index];
+            SpriteRenderer fist = battleFists[index];
             Vector2 start = fist.transform.position;
             Quaternion initialRotation = fist.transform.rotation;
             const float recovery = .55f;

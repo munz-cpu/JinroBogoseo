@@ -16,6 +16,7 @@ namespace BossTemplate
         [SerializeField] private Button attempt;
         [SerializeField] private Text ratingTitle, debrief, participant, contact, withdrawalMessage;
         [SerializeField] private StudyMainMenu mainMenu;
+        [SerializeField] private RectTransform consentContent, waitingContent, declinedContent;
         [SerializeField] private GameObject studyBackdrop;
         [SerializeField] private GameObject debriefScenery;
         [SerializeField] private ScrollRect debriefScroll;
@@ -30,6 +31,7 @@ namespace BossTemplate
         private bool submittingRating;
         private StudyPauseMenu pauseMenu;
         private StudyVictoryPanel victoryPanel;
+        private StudySlideIn introSlide;
         internal bool HasVictoryPanel => victoryPanel != null;
 
         internal void Bind(StudySession owner, Font font)
@@ -74,6 +76,7 @@ namespace BossTemplate
         private void Update()
         {
             if (!session) return;
+            introSlide?.Advance();
             var keyboard = Keyboard.current;
             bool escape = keyboard?.escapeKey.wasPressedThisFrame == true;
             if (attempt && escape) session.TogglePause();
@@ -101,6 +104,8 @@ namespace BossTemplate
 
         internal void Render(StudyScreen screen)
         {
+            introSlide?.Finish();
+            introSlide = null;
             if (activeScreen) activeScreen.SetActive(false);
             mainMenu?.SetSceneryVisible(screen == StudyScreen.Title);
             bool showDebriefScenery = debriefScenery && screen == StudyScreen.Debrief;
@@ -151,8 +156,21 @@ namespace BossTemplate
             }
 
             activeScreen.SetActive(true);
-            mainMenu?.ShowBack(screen is StudyScreen.Consent or StudyScreen.Waiting or StudyScreen.Declined);
+            var back = mainMenu?.ShowBack(screen is StudyScreen.Consent or StudyScreen.Waiting or StudyScreen.Declined);
             if (screen == StudyScreen.Title) mainMenu?.Show();
+            var introContent = screen switch
+            {
+                StudyScreen.Consent => consentContent,
+                StudyScreen.Waiting => waitingContent,
+                StudyScreen.Declined => declinedContent,
+                _ => null
+            };
+            if (introContent)
+            {
+                introSlide = new StudySlideIn((RectTransform)transform, introContent, back);
+                introSlide.Restart();
+                introSlide.Advance();
+            }
             var scroll = screen == StudyScreen.Debrief && debriefScroll ? debriefScroll : activeScreen.GetComponent<ScrollRect>();
             if (scroll)
             {

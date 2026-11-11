@@ -2973,6 +2973,9 @@ MonoBehaviour:
   contact: {fileID: 0}
   withdrawalMessage: {fileID: 0}
   mainMenu: {fileID: 1575503109}
+  consentContent: {fileID: 2061370740}
+  waitingContent: {fileID: 1699134059}
+  declinedContent: {fileID: 1928117288}
   studyBackdrop: {fileID: 360392692}
   victoryStar: {fileID: 0}
   ratings: []

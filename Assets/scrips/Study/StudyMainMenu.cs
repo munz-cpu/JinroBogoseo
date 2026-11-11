@@ -8,9 +8,6 @@ namespace BossTemplate
 {
     internal sealed class StudyMainMenu : MonoBehaviour
     {
-        private const float NavigationSlideDuration = .48f;
-        private const float NavigationSlideStagger = .055f;
-
         [Serializable]
         private struct ParallaxLayer
         {
@@ -34,8 +31,7 @@ namespace BossTemplate
         private Vector3 sceneryScale, golemScale, navigationScale, detailsScale;
         private Vector2 golemOrigin, detailsAnchor, viewport;
         private float skyWidth, pointerX, travelScale;
-        private (RectTransform rect, Vector2 origin)[] navigationItems;
-        private float navigationRightEdge, navigationSlideElapsed;
+        private StudySlideIn navigationSlide;
         private bool showingSettings;
         private GameObject previousSelection;
 
@@ -48,14 +44,7 @@ namespace BossTemplate
             golemOrigin = golemLayer.anchoredPosition;
             golemScale = golemLayer.localScale;
             navigationScale = navigation.localScale;
-            navigationItems = new (RectTransform, Vector2)[navigation.childCount];
-            for (int i = 0; i < navigationItems.Length; i++)
-            {
-                var item = (RectTransform)navigation.GetChild(i);
-                navigationItems[i] = (item, item.anchoredPosition);
-                navigationRightEdge = Mathf.Max(navigationRightEdge, item.localPosition.x + item.rect.xMax * item.localScale.x);
-            }
-            Array.Sort(navigationItems, (a, b) => b.origin.y.CompareTo(a.origin.y));
+            navigationSlide = new StudySlideIn((RectTransform)transform, navigation);
             detailsScale = details.localScale;
             detailsAnchor = details.anchorMin;
 
@@ -77,16 +66,18 @@ namespace BossTemplate
             RefreshPlayLabel();
             CloseDetails();
             if (EventSystem.current) EventSystem.current.firstSelectedGameObject = play.gameObject;
-            navigationSlideElapsed = 0;
+            navigationSlide.Restart();
             AnimateParallax();
         }
 
         internal void SetSceneryVisible(bool visible) => scenery.SetActive(visible);
 
-        internal void ShowBack(bool show)
+        internal RectTransform ShowBack(bool show)
         {
             backToMenu.gameObject.SetActive(show);
-            if (show) backToMenu.transform.SetAsLastSibling();
+            if (!show) return null;
+            backToMenu.transform.SetAsLastSibling();
+            return (RectTransform)backToMenu.transform;
         }
 
         internal void RefreshPlayLabel() => playLabel.text = session.HasContinuation ? "이어하기" : "게임 시작";
@@ -116,28 +107,7 @@ namespace BossTemplate
             for (int i = 0; i < sceneryLayers.Length; i++)
                 sceneryLayers[i].target.localPosition = layerOrigins[i] + Vector3.right * (worldOffset * sceneryLayers[i].distance);
             golemLayer.anchoredPosition = golemOrigin + Vector2.right * (pointerX * golemTravel * travelScale);
-            AnimateNavigationSlide();
-        }
-
-        private void AnimateNavigationSlide()
-        {
-            float endTime = NavigationSlideDuration + (navigationItems.Length - 1) * NavigationSlideStagger;
-            if (navigationSlideElapsed > endTime) return;
-
-            var parent = (RectTransform)navigation.parent;
-            Vector3 left = parent.TransformPoint(new Vector3(parent.rect.xMin, parent.rect.center.y, 0));
-            float startOffset = navigation.InverseTransformPoint(left).x - navigationRightEdge - 24;
-            for (int i = 0; i < navigationItems.Length; i++)
-            {
-                var (item, origin) = navigationItems[i];
-                float progress = Mathf.Clamp01((navigationSlideElapsed - i * NavigationSlideStagger) / NavigationSlideDuration);
-                float remaining = 1 - progress;
-                item.anchoredPosition = origin + Vector2.right * (startOffset * remaining * remaining * remaining);
-            }
-            // Apply the final pose even if a frame crosses the end of the animation.
-            navigationSlideElapsed = navigationSlideElapsed == endTime
-                ? float.PositiveInfinity
-                : Mathf.Min(endTime, navigationSlideElapsed + Time.unscaledDeltaTime);
+            navigationSlide.Advance();
         }
 
         internal void CloseDetails()

@@ -24,11 +24,30 @@ def metrics(rows):
     }
 
 
+def achievement_by_attempts(rows, field):
+    buckets = defaultdict(list)
+    for row in rows:
+        if row["outcome"] == "cleared":
+            key = (row["group"], row["target_attempts"], row["assignment_version"], row["settings_version"], row[field])
+            buckets[key].append(row["rating"])
+
+    summary = []
+    for (group, target, assignment_version, settings_version, attempts), ratings in sorted(buckets.items()):
+        answered = [rating for rating in ratings if rating is not None]
+        summary.append({
+            "group": group, "target_attempts": target,
+            "assignment_version": assignment_version, "settings_version": settings_version,
+            "attempts": attempts, "cleared": len(ratings), "rated": len(answered),
+            "mean_achievement_score": mean(answered) if answered else None,
+        })
+    return summary
+
+
 def analyze(db):
     rows = []
     by_group = defaultdict(list)
-    for group, target, attempts, survey, latest in db.execute("""
-        SELECT experiment_group, target_attempts,
+    for group, target, assignment_version, settings_version, attempts, survey, latest in db.execute("""
+        SELECT experiment_group, target_attempts, assignment_version, settings_version,
             (SELECT COUNT(*) FROM attempts a WHERE a.participant_id=p.participant_id),
             (SELECT payload FROM surveys s WHERE s.participant_id=p.participant_id),
             (SELECT payload FROM attempts a WHERE a.participant_id=p.participant_id
@@ -38,7 +57,14 @@ def analyze(db):
         outcome = json.loads(latest)["result"] if latest else "open"
         if outcome != "cleared":
             outcome = "stopped" if survey or outcome == "stopped" else "open"
-        row = {"outcome": outcome, "actual_attempts": attempts, "target_attempts": target}
+        response = json.loads(survey) if survey and outcome == "cleared" else None
+        rating = None
+        if response and response["cleared"] and not response["skipped"] and len(response["scores"]) == 1:
+            rating = response["scores"][0]
+        row = {
+            "outcome": outcome, "actual_attempts": attempts, "target_attempts": target, "group": group,
+            "assignment_version": assignment_version, "settings_version": settings_version, "rating": rating,
+        }
         rows.append(row)
         by_group[(group, target)].append(row)
     return {
@@ -47,6 +73,8 @@ def analyze(db):
             {"group": group, "target_attempts": target, **metrics(group_rows)}
             for (group, target), group_rows in sorted(by_group.items())
         ],
+        "achievement_by_target_attempts": achievement_by_attempts(rows, "target_attempts"),
+        "achievement_by_actual_attempts": achievement_by_attempts(rows, "actual_attempts"),
     }
 
 

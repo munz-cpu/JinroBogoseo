@@ -191,7 +191,7 @@ namespace BossTemplate
         private bool Use(int i) { if (Time.time < ready[i]) return false; ready[i] = Time.time + cooldowns[i]; return true; }
         private bool Shoot(Vector2 velocity, float damage, Sprite sprite = null)
         {
-            Vector2 muzzle = new Vector2(facing * (visuals ? 1.1f : .7f), crouching ? .32f : .62f);
+            Vector2 muzzle = new Vector2(facing * (visuals ? 1.1f : .7f), crouching ? .42f : .72f);
             Vector2 origin = (Vector2)transform.position + muzzle;
             if (!arena.SpawnProjectile(origin, velocity, damage, false, sprite ? sprite : bulletSprite)) return false;
             if (visuals) visuals.Fire();

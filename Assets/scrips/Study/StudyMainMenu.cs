@@ -9,6 +9,7 @@ namespace BossTemplate
     internal sealed class StudyMainMenu : MonoBehaviour
     {
         private const float DetailsEntranceDuration = .28f;
+        private const float DetailsExitDuration = .22f;
 
         [Serializable]
         private struct ParallaxLayer
@@ -36,7 +37,9 @@ namespace BossTemplate
         private float skyWidth, pointerX, travelScale;
         private StudySlideIn navigationSlide;
         private CanvasGroup detailsGroup;
-        private float detailsOpenedAt = float.NegativeInfinity;
+        private GameObject detailsBackdrop;
+        private float detailsTransitionStart = float.NegativeInfinity;
+        private float detailsFrom, detailsTarget, detailsDuration;
         private bool showingSettings;
         private GameObject previousSelection;
 
@@ -53,6 +56,8 @@ namespace BossTemplate
             detailsAnchor = details.anchorMin;
             detailsPosition = details.anchoredPosition;
             detailsGroup = details.gameObject.AddComponent<CanvasGroup>();
+            details.GetComponent<Image>().raycastTarget = true;
+            detailsBackdrop = CreateDetailsBackdrop();
             play.onClick.AddListener(session.OpenIntro);
             settings.onClick.AddListener(() => OpenDetails("설정", "", true));
             stats.onClick.AddListener(() => OpenDetails("통계", Stats()));
@@ -71,7 +76,7 @@ namespace BossTemplate
         internal void Show()
         {
             RefreshPlayLabel();
-            CloseDetails();
+            if (details.gameObject.activeSelf) FinishCloseDetails();
             if (EventSystem.current) EventSystem.current.firstSelectedGameObject = play.gameObject;
             navigationSlide.Restart();
             AnimateParallax();
@@ -126,16 +131,23 @@ namespace BossTemplate
                 sceneryLayers[i].target.localPosition = layerOrigins[i] + Vector3.right * (worldOffset * sceneryLayers[i].distance);
             golemLayer.transform.position = golemOrigin + Vector3.right * (worldOffset * golemTravel);
             navigationSlide.Advance();
-            AdvanceDetailsEntrance();
+            AdvanceDetailsTransition();
         }
 
         internal void CloseDetails()
         {
-            if (!details.gameObject.activeSelf) return;
+            if (!details.gameObject.activeSelf || detailsTarget == 0) return;
+            detailsGroup.interactable = false;
+            StartDetailsTransition(0, DetailsExitDuration);
+        }
+
+        private void FinishCloseDetails()
+        {
             if (showingSettings) StudyPauseMenu.SaveVolume(volume.value);
             details.gameObject.SetActive(false);
-            detailsOpenedAt = float.NegativeInfinity;
-            SetDetailsEntrance(1);
+            detailsBackdrop.SetActive(false);
+            detailsTransitionStart = float.NegativeInfinity;
+            SetDetailsPose(1);
             navigation.gameObject.SetActive(true);
             if (EventSystem.current)
                 EventSystem.current.SetSelectedGameObject(previousSelection ? previousSelection : play.gameObject);
@@ -149,6 +161,7 @@ namespace BossTemplate
 
         private void OpenDetails(string title, string text, bool settings = false)
         {
+            if (details.gameObject.activeSelf) return;
             previousSelection = EventSystem.current ? EventSystem.current.currentSelectedGameObject : null;
             showingSettings = settings;
             heading.text = title;
@@ -156,8 +169,10 @@ namespace BossTemplate
             scroll.gameObject.SetActive(!settings);
             volume.gameObject.SetActive(settings);
             volumeLabel.gameObject.SetActive(settings);
-            detailsOpenedAt = Time.unscaledTime;
-            SetDetailsEntrance(0);
+            SetDetailsPose(0);
+            detailsGroup.interactable = false;
+            StartDetailsTransition(1, DetailsEntranceDuration);
+            detailsBackdrop.SetActive(true);
             details.gameObject.SetActive(true);
             if (settings)
             {
@@ -174,19 +189,50 @@ namespace BossTemplate
             if (EventSystem.current) EventSystem.current.SetSelectedGameObject(back.gameObject);
         }
 
-        private void AdvanceDetailsEntrance()
+        private GameObject CreateDetailsBackdrop()
         {
-            if (!details.gameObject.activeSelf || float.IsNegativeInfinity(detailsOpenedAt)) return;
-            float progress = Mathf.Clamp01((Time.unscaledTime - detailsOpenedAt) / DetailsEntranceDuration);
-            SetDetailsEntrance(Mathf.SmoothStep(0, 1, progress));
-            if (progress >= 1) detailsOpenedAt = float.NegativeInfinity;
+            var backdrop = new GameObject("상세 메뉴 바깥 클릭 영역", typeof(RectTransform), typeof(Image), typeof(Button));
+            backdrop.layer = details.gameObject.layer;
+            var rect = (RectTransform)backdrop.transform;
+            rect.SetParent(details.parent, false);
+            rect.SetSiblingIndex(details.GetSiblingIndex());
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = rect.offsetMax = Vector2.zero;
+            backdrop.GetComponent<Image>().color = Color.clear;
+            var button = backdrop.GetComponent<Button>();
+            button.navigation = new Navigation { mode = Navigation.Mode.None };
+            button.transition = Selectable.Transition.None;
+            button.onClick.AddListener(CloseDetails);
+            backdrop.SetActive(false);
+            return backdrop;
         }
 
-        private void SetDetailsEntrance(float amount)
+        private void StartDetailsTransition(float target, float duration)
+        {
+            detailsFrom = detailsGroup.alpha;
+            detailsTarget = target;
+            detailsDuration = duration;
+            detailsTransitionStart = Time.unscaledTime;
+        }
+
+        private void AdvanceDetailsTransition()
+        {
+            if (!details.gameObject.activeSelf || float.IsNegativeInfinity(detailsTransitionStart)) return;
+            float progress = Mathf.Clamp01((Time.unscaledTime - detailsTransitionStart) / detailsDuration);
+            float amount = Mathf.SmoothStep(detailsFrom, detailsTarget, progress);
+            SetDetailsPose(amount);
+            detailsGroup.interactable = detailsTarget > 0 && amount >= .55f;
+            if (progress < 1) return;
+
+            detailsTransitionStart = float.NegativeInfinity;
+            if (detailsTarget == 0) FinishCloseDetails();
+        }
+
+        private void SetDetailsPose(float amount)
         {
             details.anchoredPosition = detailsPosition + Vector2.down * (36 * (1 - amount));
             detailsGroup.alpha = amount;
-            detailsGroup.blocksRaycasts = amount >= .55f;
         }
 
         private void UpdateVolumeLabel(float value) => volumeLabel.text = $"전체 음량   {Mathf.RoundToInt(value * 100)}%";

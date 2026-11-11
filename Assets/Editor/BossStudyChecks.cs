@@ -148,21 +148,37 @@ internal static class BossStudyChecks
         }
         var details = menu.Find("메뉴 상세");
         var back = details.Find("돌아가기").GetComponent<Button>();
+        var outside = menu.Find("상세 메뉴 바깥 클릭 영역").GetComponent<Button>();
         items.Find("설정").GetComponent<Button>().onClick.Invoke();
         var menuVolume = details.GetComponentInChildren<Slider>();
         float previousMenuVolume = menuVolume.value;
         menuVolume.value = .4f;
         Check(Mathf.Approximately(AudioListener.volume, .4f), "Settings changes master volume");
         menuVolume.value = previousMenuVolume;
-        back.onClick.Invoke();
+        yield return Until(() => details.GetComponent<CanvasGroup>().interactable, "Settings panel opens");
+        Canvas.ForceUpdateCanvases();
+        var outsidePointer = new PointerEventData(EventSystem.current)
+        {
+            button = PointerEventData.InputButton.Left,
+            position = new Vector2(Screen.width * .97f, Screen.height * .94f)
+        };
+        var outsideHits = new List<RaycastResult>();
+        EventSystem.current.RaycastAll(outsidePointer, outsideHits);
+        Check(outsideHits.Count > 0 && outsideHits[0].gameObject == outside.gameObject,
+            "Outside clicks hit the detail backdrop");
+        outside.OnPointerClick(outsidePointer);
+        Check(details.gameObject.activeSelf && !items.gameObject.activeSelf, "The menu stays covered during the exit animation");
+        yield return Until(() => !details.gameObject.activeSelf && items.gameObject.activeSelf, "Settings closes from the backdrop");
         items.Find("통계").GetComponent<Button>().onClick.Invoke();
         Check(Array.Exists(details.GetComponentsInChildren<Text>(), t => t.text.Contains("도전 횟수   0회")),
             "Statistics shows the empty record");
         back.onClick.Invoke();
+        yield return Until(() => !details.gameObject.activeSelf, "Statistics closes before opening terms");
         items.Find("실험 약관").GetComponent<Button>().onClick.Invoke();
         Check(Array.Exists(details.GetComponentsInChildren<Text>(), t => t.text.Contains(study.Protocol.consentNotice)),
             "Terms shows the configured consent notice");
         back.onClick.Invoke();
+        yield return Until(() => !details.gameObject.activeSelf, "Terms closes before starting the game");
         play.onClick.Invoke();
         yield return Until(() => SceneManager.GetActiveScene().path == StudySceneEntry.IntroPath
             && study.Screen == StudyScreen.Consent, "Start opens consent from the main menu");

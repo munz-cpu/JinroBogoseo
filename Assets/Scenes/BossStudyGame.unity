@@ -1544,6 +1544,7 @@ MonoBehaviour:
   vanishSound: {fileID: 8300000, guid: 59d541bfcd7682344aae00d5a2e702e0, type: 3}
   fistImpactSound: {fileID: 8300000, guid: b9dbb9a7c29a58a42909336592e00ac1, type: 3}
   fistSlamSound: {fileID: 8300000, guid: c43191f2192562946909709ad6d1292c, type: 3}
+  giantRiseSound: {fileID: 8300000, guid: b392e2d25242345429c8dbefce4198d4, type: 3}
   fists:
   - {fileID: 413258734}
   - {fileID: 1465523408}

@@ -27,6 +27,7 @@ namespace BossTemplate
         [SerializeField, InspectorName("내려찍기 순간이동")] private AudioClip vanishSound;
         [SerializeField, InspectorName("주먹 충돌")] private AudioClip fistImpactSound;
         [SerializeField, InspectorName("주먹 내려찍기 착지")] private AudioClip fistSlamSound;
+        [SerializeField, InspectorName("2페이즈 골렘 등장")] private AudioClip giantRiseSound;
         private const float FramesPerSecond = 12;
         private const float FallingRockHoverHeight = 7.8f;
         private const float HealingMineChance = .3f;
@@ -208,6 +209,7 @@ namespace BossTemplate
                 appearance.transform.localPosition = lowered;
                 ShowOriginalFists(-riseHeight);
                 SetHidden(false);
+                arena.PlayEffect(giantRiseSound);
                 const float riseDuration = 3f;
                 const float rumbleInterval = .2f;
                 var rumbleOrigin = new Vector2(giantX, arena.GroundY + 1);

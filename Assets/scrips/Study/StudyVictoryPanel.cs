@@ -84,6 +84,7 @@ namespace BossTemplate
             var text = Rect(parent, title, new Vector2(0, y), new Vector2(parent.sizeDelta.x, size + 10))
                 .gameObject.AddComponent<Text>();
             text.font = font;
+            text.fontStyle = FontStyle.Bold;
             text.text = title;
             text.fontSize = size;
             text.color = color;

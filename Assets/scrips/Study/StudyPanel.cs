@@ -31,7 +31,7 @@ namespace BossTemplate
         [SerializeField] private bool useSceneFonts;
 
         private StudySession session;
-        private Button enrollOffline;
+        private Button enrollOffline, switchToOffline;
         private GameObject activeScreen;
         private bool submittingRating;
         private StudyPauseMenu pauseMenu;
@@ -60,13 +60,14 @@ namespace BossTemplate
                 if (screen) screen.SetActive(false);
             if (enroll)
             {
-                enrollOffline = Instantiate(enroll, enroll.transform.parent);
-                enrollOffline.name = "동의하고 오프라인 시작";
-                enrollOffline.transform.SetSiblingIndex(enroll.transform.GetSiblingIndex() + 1);
-                enrollOffline.GetComponentInChildren<Text>(true).text = enrollOffline.name;
+                enrollOffline = AddOfflineButton(enroll, "동의하고 오프라인 시작", 170);
                 enroll.GetComponent<LayoutElement>().preferredWidth = 146;
-                enrollOffline.GetComponent<LayoutElement>().preferredWidth = 170;
-                Listen(enrollOffline, session.EnrollOffline);
+            }
+            if (cancelRegistration)
+            {
+                switchToOffline = AddOfflineButton(cancelRegistration, "오프라인으로 새로 시작", 182);
+                switchToOffline.transform.SetSiblingIndex(0);
+                switchToOffline.transform.parent.GetComponent<HorizontalLayoutGroup>().spacing = 12;
             }
             if (font && !useSceneFonts)
                 foreach (var text in GetComponentsInChildren<Text>(true)) text.font = font;
@@ -253,6 +254,7 @@ namespace BossTemplate
         internal void RefreshStatus()
         {
             if (session.Screen == StudyScreen.Title) mainMenu?.RefreshPlayLabel();
+            if (switchToOffline) switchToOffline.interactable = session.CanSwitchToOffline;
             if (replay) replay.interactable = session.CanReplay;
             bool showNetwork = session.Screen == StudyScreen.Waiting
                 || (session.Screen == StudyScreen.Withdrawal && session.WithdrawalPending);
@@ -264,6 +266,17 @@ namespace BossTemplate
                 status.gameObject.SetActive(visible);
             }
             if (retry) retry.gameObject.SetActive(visible);
+        }
+
+        private Button AddOfflineButton(Button template, string title, float width)
+        {
+            var button = Instantiate(template, template.transform.parent);
+            button.name = title;
+            button.transform.SetSiblingIndex(template.transform.GetSiblingIndex() + 1);
+            button.GetComponentInChildren<Text>(true).text = title;
+            button.GetComponent<LayoutElement>().preferredWidth = width;
+            Listen(button, session.EnrollOffline);
+            return button;
         }
 
         private void CopyContact()

@@ -59,6 +59,9 @@ namespace BossTemplate
         internal int Attempts => state.attempts;
         internal AttemptRecord LastAttempt => state.lastAttempt;
         internal bool HasContinuation => state.participant != null && !state.debrief;
+        internal bool CanSwitchToOffline => Screen == StudyScreen.Waiting && !changingScene
+            && state.participant != null && state.assignment == null && state.attempts == 0
+            && !state.withdrawalPending && asset.protocol.HasConsentDetails;
         private bool CanPause => !fatal && !changingScene && (Screen is StudyScreen.Ready or StudyScreen.Defeat
             || InCombat && !arena.CombatEnded);
         private float ElapsedSeconds => (Paused ? pausedAt : (arena ? arena.Boss.DefeatedAt : null)
@@ -157,11 +160,40 @@ namespace BossTemplate
         }
 
         internal void Enroll() => Enroll(offline: false);
-        internal void EnrollOffline() => Enroll(offline: true);
+        internal void EnrollOffline()
+        {
+            if (Screen == StudyScreen.Waiting)
+            {
+                if (!CanSwitchToOffline) return;
+                // A lost response can hide an existing online assignment. Retire that ID independently.
+                var previous = new StudySave
+                {
+                    participant = state.participant, protocol = state.protocol, token = state.token,
+                    withdrawalPending = true,
+                    pending = new List<PendingSubmission>
+                    {
+                        new PendingSubmission { route = "participants", json = JsonUtility.ToJson(state.participant) },
+                        new PendingSubmission { route = "withdraw", json = JsonUtility.ToJson(new WithdrawalRecord
+                            { participant_id = state.participant.participant_id }) },
+                    },
+                };
+                try { storage.WriteArchive(previous); }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
+                {
+                    FailStorage(error);
+                    return;
+                }
+                state = new StudySave();
+                archiveUploads.Add(new ArchiveUpload(previous));
+                Retry();
+            }
+            Enroll(offline: true);
+        }
 
         private void Enroll(bool offline)
         {
-            if (Screen != StudyScreen.Consent || changingScene || !Protocol.HasConsentDetails
+            bool fromConsent = Screen == StudyScreen.Consent || (offline && Screen == StudyScreen.Waiting && state.participant == null);
+            if (!fromConsent || changingScene || !Protocol.HasConsentDetails
                 || (!offline && !Protocol.HasValidEndpoint)) return;
             state.declined = false;
             state.protocol = JsonUtility.FromJson<StudyProtocol>(JsonUtility.ToJson(asset.protocol));
@@ -422,7 +454,7 @@ namespace BossTemplate
             var completed = state;
             try
             {
-                storage.ArchiveCompleted(completed);
+                storage.WriteArchive(completed);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
             {
@@ -502,7 +534,8 @@ namespace BossTemplate
             float now = Time.realtimeSinceStartup;
             foreach (var archive in archiveUploads)
             {
-                if (now < archive.nextSend || !CanSync(archive.save)) continue;
+                if (now < archive.nextSend || !CanSync(archive.save)
+                    || (archive.save.withdrawalPending && !archive.save.protocol.HasValidEndpoint)) continue;
                 StartCoroutine(SendArchived(archive));
                 break;
             }
@@ -626,7 +659,8 @@ namespace BossTemplate
             catch (InvalidOperationException) { }
             if (operation != null) yield return operation;
 
-            if (operation != null && request.result == UnityWebRequest.Result.Success
+            bool cancelledRegistration = save.withdrawalPending && pending?.route == "participants" && request.responseCode == 410;
+            if (operation != null && (request.result == UnityWebRequest.Result.Success || cancelledRegistration)
                 && (!registering || save.assignment.Matches(ReadAssignment(request))))
             {
                 if (registering) save.offlineRegistrationPending = false;
@@ -653,7 +687,8 @@ namespace BossTemplate
         {
             try
             {
-                storage.ArchiveCompleted(save);
+                if (save.withdrawalPending && save.pending.Count == 0) storage.RemoveArchive(save);
+                else storage.WriteArchive(save);
                 return true;
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)

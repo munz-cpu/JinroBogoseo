@@ -437,21 +437,31 @@ internal static class BossStudyChecks
         saved = storage.Load();
         Check(saved.withdrawn && saved.participant == null && string.IsNullOrEmpty(saved.token), "Local study data removed");
 
-        settings.protocol.apiUrl = "";
+        settings.protocol.apiUrl = Endpoint;
         ReplacePrivate(study, "state", new StudySave());
         typeof(StudySession).GetMethod("Show", BindingFlags.Instance | BindingFlags.NonPublic)
             .Invoke(study, new object[] { StudyScreen.Consent });
         yield return Until(() => study.Screen == StudyScreen.Consent && SceneManager.GetActiveScene().path == StudySceneEntry.IntroPath,
-            "Open consent without a configured server");
+            "Open consent for the pending registration scenario");
+        ReplacePrivate(study, "nextSend", float.PositiveInfinity);
+        study.Enroll();
+        string pendingParticipant = storage.Load().participant.participant_id;
+        Check(study.Screen == StudyScreen.Waiting && storage.Load().assignment == null,
+            "An existing unassigned participant waits for online registration");
+        settings.protocol.apiUrl = "";
         panel = UnityEngine.Object.FindAnyObjectByType<StudyPanel>();
-        var offlineButton = Array.Find(panel.GetComponentsInChildren<Button>(), button => button.name == "동의하고 오프라인 시작");
-        Check(offlineButton && offlineButton.interactable, "Offline consent is available without an endpoint");
+        var offlineButton = Array.Find(panel.GetComponentsInChildren<Button>(), button => button.name == "오프라인으로 새로 시작");
+        Check(offlineButton && offlineButton.interactable, "Offline fallback is available on the waiting screen");
         offlineButton.onClick.Invoke();
+        var pendingCancellation = new List<StudySave>(storage.LoadPendingArchives(null))
+            .Find(save => save.participant.participant_id == pendingParticipant);
+        Check(pendingCancellation != null && pendingCancellation.withdrawalPending,
+            "Switching queues cancellation under the old participant ID");
         yield return Until(() => study.InCombat && SceneManager.GetActiveScene().path == StudySceneEntry.GamePath,
             "Offline consent starts combat before any registration request");
         saved = storage.Load();
         string offlineParticipant = saved.participant.participant_id;
-        Check(saved.offlineRegistrationPending && saved.assignment.assignment_version == "offline-v1"
+        Check(offlineParticipant != pendingParticipant && saved.offlineRegistrationPending && saved.assignment.assignment_version == "offline-v1"
             && saved.active.attempt_number == 1, "Offline registration, assignment and attempt survive a save reload");
         arena = UnityEngine.Object.FindAnyObjectByType<BossArena>();
         arena.SkipCurrentPhase();
@@ -462,6 +472,8 @@ internal static class BossStudyChecks
         yield return Until(() => study.Screen == StudyScreen.Debrief && SceneManager.GetActiveScene().path == StudySceneEntry.ReviewPath,
             "Offline rating opens debrief");
         study.StartNewStudy();
+        yield return Until(() => !File.Exists(Path.Combine(storagePath, "completed-studies", pendingParticipant + ".json")),
+            "The previous registration is removed after its cancellation succeeds");
         archived = new List<StudySave>(storage.LoadPendingArchives(null));
         Check(archived.Count == 1 && archived[0].participant.participant_id == offlineParticipant
             && archived[0].offlineRegistrationPending && archived[0].pending.Count == 2,

@@ -46,12 +46,15 @@ namespace BossTemplate
             Write(path, state);
         }
 
-        internal void ArchiveCompleted(StudySave state)
+        internal void WriteArchive(StudySave state) => Write(ArchivePath(state), state);
+
+        internal void RemoveArchive(StudySave state) => File.Delete(ArchivePath(state));
+
+        private string ArchivePath(StudySave state)
         {
             if (!Guid.TryParse(state.participant.participant_id, out var participantId))
-                throw new InvalidDataException("Invalid completed study participant ID");
-            string archive = Path.Combine(Path.GetDirectoryName(path), "completed-studies", $"{participantId:D}.json");
-            Write(archive, state);
+                throw new InvalidDataException("Invalid archived study participant ID");
+            return Path.Combine(Path.GetDirectoryName(path), "completed-studies", $"{participantId:D}.json");
         }
 
         internal IEnumerable<StudySave> LoadPendingArchives(string currentParticipantId)
@@ -69,17 +72,25 @@ namespace BossTemplate
                 {
                     Debug.LogWarning("Could not read an archived study (" + error.GetType().Name + ").");
                 }
-                if (saved?.schema == 1 && saved.debrief && saved.pending?.Count > 0
+                if (saved?.schema == 1 && saved.pending?.Count > 0
                     && Guid.TryParse(saved.participant?.participant_id, out var id)
                     && id.ToString("D") == Path.GetFileNameWithoutExtension(archive)
                     && !string.Equals(id.ToString("D"), currentParticipantId, StringComparison.OrdinalIgnoreCase)
                     && !string.IsNullOrEmpty(saved.token)
-                    && (saved.offlineRegistrationPending ? ValidOfflineRegistration(saved) : saved.protocol?.IsConfigured == true)
-                    && saved.pending.TrueForAll(item => item != null && (item.route is "attempts" or "surveys")
-                        && !string.IsNullOrEmpty(item.json)))
+                    && saved.pending.TrueForAll(item => item != null && !string.IsNullOrEmpty(item.json))
+                    && (saved.withdrawalPending ? ValidArchivedWithdrawal(saved) : ValidArchivedResults(saved)))
                     yield return saved;
             }
         }
+
+        private static bool ValidArchivedWithdrawal(StudySave save) => !save.offlineRegistrationPending
+            && save.protocol?.HasConsentDetails == true && save.pending.Count <= 2
+            && save.pending[save.pending.Count - 1].route == "withdraw"
+            && (save.pending.Count == 1 || save.pending[0].route == "participants");
+
+        private static bool ValidArchivedResults(StudySave save) => save.debrief
+            && (save.offlineRegistrationPending ? ValidOfflineRegistration(save) : save.protocol?.IsConfigured == true)
+            && save.pending.TrueForAll(item => item.route is "attempts" or "surveys");
 
         private static bool ValidOfflineRegistration(StudySave save) => save.protocol?.HasConsentDetails == true
             && !string.IsNullOrEmpty(save.token) && Guid.TryParse(save.participant?.participant_id, out var participantId)

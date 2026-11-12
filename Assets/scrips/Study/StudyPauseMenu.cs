@@ -154,6 +154,7 @@ namespace BossTemplate
             var rect = Rect(parent, title, new Vector2(0, y), new Vector2(332, Mathf.Max(52, size * 1.35f)));
             var text = rect.gameObject.AddComponent<Text>();
             text.font = font;
+            text.fontStyle = FontStyle.Bold;
             text.text = title;
             text.fontSize = size;
             text.alignment = TextAnchor.MiddleLeft;

@@ -10,6 +10,12 @@ namespace BossTemplate
     {
         private const float DetailsEntranceDuration = .28f;
         private const float DetailsExitDuration = .22f;
+        private const string HowToPlay =
+            "이동: WASD\n" +
+            "점프: Space, W\n" +
+            "공격: Enter\n" +
+            "강공격: \\\n" +
+            "돌진: Shift";
 
         [Serializable]
         private struct ParallaxLayer
@@ -25,7 +31,7 @@ namespace BossTemplate
         [SerializeField] private SpriteRenderer golemLayer;
         [SerializeField] private RectTransform navigation, details;
         [SerializeField] private float golemTravel = 12;
-        [SerializeField] private Button play, settings, stats, terms, back, backToMenu;
+        [SerializeField] private Button play, howToPlay, settings, stats, terms, back, backToMenu;
         [SerializeField] private Text playLabel, heading, body, volumeLabel;
         [SerializeField] private ScrollRect scroll;
         [SerializeField] private Slider volume;
@@ -61,12 +67,13 @@ namespace BossTemplate
             details.GetComponent<Image>().raycastTarget = true;
             detailsBackdrop = CreateDetailsBackdrop();
             play.onClick.AddListener(session.OpenIntro);
+            howToPlay.onClick.AddListener(() => OpenDetails("플레이 방법", HowToPlay));
             settings.onClick.AddListener(() => OpenDetails("설정", "", true));
             stats.onClick.AddListener(() => OpenDetails("통계", Stats()));
             terms.onClick.AddListener(() => OpenDetails("실험 약관", Terms()));
             back.onClick.AddListener(CloseDetails);
             backToMenu.onClick.AddListener(session.BackToTitle);
-            foreach (var button in new[] { play, settings, stats, terms, back, backToMenu })
+            foreach (var button in new[] { play, howToPlay, settings, stats, terms, back, backToMenu })
                 StudyTextHover.Attach(button);
             BindVolumeRows();
         }

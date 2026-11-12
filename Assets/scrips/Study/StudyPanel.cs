@@ -122,7 +122,7 @@ namespace BossTemplate
             {
                 pauseMenu ??= new StudyPauseMenu((RectTransform)transform,
                     pauseDisplayFont ? pauseDisplayFont : readyTitle.font, readyTitle.font, session);
-                pauseMenu.Open(session.Deaths);
+                pauseMenu.Open(session.Deaths, session.CanOpenEarlyReview);
             }
             else pauseMenu?.Close();
         }

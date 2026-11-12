@@ -75,6 +75,8 @@ namespace BossTemplate
         private float ElapsedSeconds => (Paused ? pausedAt : (arena ? arena.Boss.DefeatedAt : null)
             ?? Time.realtimeSinceStartup) - startTime;
         internal bool Cleared => state.cleared;
+        internal bool CanOpenEarlyReview => Paused && !fatal && !changingScene && state.attempts > 20
+            && Screen is StudyScreen.Combat or StudyScreen.Defeat;
         internal bool InactivityClosed => state.inactivityClosed;
         internal bool WithdrawalPending => state.withdrawalPending;
         // A save written before enrollment can deserialize with an empty protocol object.
@@ -136,7 +138,8 @@ namespace BossTemplate
                     // The last durable checkpoint marks the end of a process that could not shut down cleanly.
                     Finish("interrupted", useCheckpoint: true, nextScreen: StudyScreen.Title);
                 }
-                else if (state.withdrawalPending || state.withdrawn || state.inactivityClosed) RestoreScreen();
+                else if (state.withdrawalPending || state.withdrawn || state.inactivityClosed
+                    || (state.surveyDue && !state.cleared)) RestoreScreen();
                 else Show(StudyScreen.Title);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
@@ -150,12 +153,7 @@ namespace BossTemplate
             if (state.withdrawalPending || state.withdrawn) Show(StudyScreen.Withdrawal);
             else if (state.declined) Show(StudyScreen.Declined);
             else if (state.debrief) Show(StudyScreen.Debrief);
-            else if (state.surveyDue && state.cleared) Show(StudyScreen.Survey);
-            else if (state.surveyDue)
-            {
-                CloseStudy(null);
-                if (Persist()) Show(StudyScreen.Debrief);
-            }
+            else if (state.surveyDue) Show(StudyScreen.Survey);
             else if (state.assignment != null) Show(StudyScreen.Ready);
             else if (state.participant != null) Show(StudyScreen.Waiting);
             else Show(StudyScreen.Title);
@@ -407,6 +405,17 @@ namespace BossTemplate
             else Show(StudyScreen.Title);
         }
 
+        internal void OpenEarlyReview()
+        {
+            if (!CanOpenEarlyReview || ExpireInactiveStudy()) return;
+            if (InCombat) Finish("stopped", offerSurvey: true);
+            else
+            {
+                state.surveyDue = true;
+                if (Persist()) RestoreScreen();
+            }
+        }
+
         private void Sample()
         {
             var attempt = state.active;
@@ -421,7 +430,8 @@ namespace BossTemplate
             attempt.phase_progress_percent = 100 * Mathf.Clamp01(1 - health.Current / health.Maximum);
         }
 
-        private void Finish(string result, bool useCheckpoint = false, StudyScreen? nextScreen = null)
+        private void Finish(string result, bool useCheckpoint = false, StudyScreen? nextScreen = null,
+            bool offerSurvey = false)
         {
             if (!useCheckpoint) Sample();
             var attempt = state.active;
@@ -436,7 +446,7 @@ namespace BossTemplate
             state.active = null;
             state.lastAttempt = attempt;
             state.cleared = attempt.cleared;
-            state.surveyDue = attempt.cleared;
+            state.surveyDue = attempt.cleared || offerSurvey;
             if (result == "defeat") state.deaths++;
             if (result is "defeat" or "cleared")
             {
@@ -444,7 +454,7 @@ namespace BossTemplate
                 if (state.recent.Count > 4) state.recent.RemoveAt(0);
             }
             Enqueue("attempts", attempt);
-            if (result == "stopped") CloseStudy(null);
+            if (result == "stopped" && !state.surveyDue) CloseStudy(null);
             if (Persist())
             {
                 if (arena)
@@ -473,7 +483,7 @@ namespace BossTemplate
 
         internal void SubmitRating(int? rating)
         {
-            if (Screen != StudyScreen.Survey || !state.cleared || rating is < 1 or > 5) return;
+            if (Screen != StudyScreen.Survey || !state.surveyDue || rating is < 1 or > 5) return;
             CloseStudy(rating);
             if (Persist()) Show(StudyScreen.Debrief);
         }

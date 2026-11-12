@@ -196,7 +196,10 @@ class StudyTest(unittest.TestCase):
         self.assertEqual((summary["total_play_time_seconds"], summary["total_damage_taken"]), (150, 30))
         self.assertEqual(summary["last_result"], "defeat")
         self.assertEqual(session.rows["Attempts"][1][-3:], [1, 42, "페이즈1 42.0%"])
-        self.assertIsNone(session.rows["Surveys"][1][3])
+        survey_header, survey_row = session.rows["Surveys"]
+        exported = dict(zip(survey_header, survey_row))
+        self.assertIsNone(exported["achievement_score"])
+        self.assertEqual(exported["early_exit_rating"], 5)
 
     def test_withdrawal_and_sheets_retry(self):
         attempt = self.attempt()

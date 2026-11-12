@@ -11,10 +11,10 @@ namespace BossTemplate
         private static readonly Color Ink = new Color32(245, 240, 232, 255);
         private static readonly Color Muted = new Color32(177, 193, 182, 255);
         private static readonly Color Accent = new Color32(250, 201, 150, 255);
-        private readonly RectTransform overlay, content;
+        private readonly RectTransform overlay, content, audioControls;
         private readonly Font displayFont;
         private readonly Text deaths;
-        private readonly Button resume;
+        private readonly Button resume, menu, review;
         private readonly StudyVolumeRow masterVolume, musicVolume, effectsVolume;
         private readonly StudySlideIn slide;
         private GameObject previousSelection;
@@ -38,29 +38,36 @@ namespace BossTemplate
 
             resume = CreateButton("게임으로 돌아가기", 85, 29, Ink);
             resume.onClick.AddListener(session.TogglePause);
-            var menu = CreateButton("메뉴로 돌아가기", 34, 23, Muted);
+            menu = CreateButton("메뉴로 돌아가기", 34, 23, Muted);
             menu.onClick.AddListener(session.ReturnToMenu);
+            review = CreateButton("도전 종료하고 후기 쓰기", -14, 23, Ink);
+            review.onClick.AddListener(session.OpenEarlyReview);
 
+            audioControls = Rect(content, "음량 및 기록", Vector2.zero, Vector2.zero);
             masterVolume = CreateVolumeRow(bodyFont, "전체 음량", StudyAudioChannel.Master, -30);
             musicVolume = CreateVolumeRow(bodyFont, "BGM", StudyAudioChannel.Music, -94);
             effectsVolume = CreateVolumeRow(bodyFont, "효과음", StudyAudioChannel.Effects, -158);
-            deaths = Label(content, "죽은 횟수", bodyFont, 18, -225, Muted);
+            deaths = Label(audioControls, "죽은 횟수", bodyFont, 18, -225, Muted);
 
             StudyVolumeRow.SetNavigation(resume, effectsVolume.Slider, menu);
-            StudyVolumeRow.SetNavigation(menu, resume, masterVolume.Slider);
-            StudyVolumeRow.SetNavigation(masterVolume.Slider, menu, musicVolume.Slider);
+            StudyVolumeRow.SetNavigation(review, menu, masterVolume.Slider);
             StudyVolumeRow.SetNavigation(musicVolume.Slider, masterVolume.Slider, effectsVolume.Slider);
             StudyVolumeRow.SetNavigation(effectsVolume.Slider, musicVolume.Slider, resume);
             slide = new StudySlideIn(overlay, content, playbackSpeed: StudySlideIn.FastPlayback);
             StudyTextHover.Attach(resume);
             StudyTextHover.Attach(menu);
+            StudyTextHover.Attach(review);
             overlay.gameObject.SetActive(false);
         }
 
-        internal void Open(int count)
+        internal void Open(int count, bool canReview)
         {
             var available = ((RectTransform)overlay.parent).rect;
-            content.localScale = Vector3.one * Mathf.Min(1, available.width / 480, available.height / 540);
+            content.localScale = Vector3.one * Mathf.Min(1, available.width / 480, available.height / (canReview ? 640 : 540));
+            review.gameObject.SetActive(canReview);
+            audioControls.anchoredPosition = canReview ? Vector2.down * 48 : Vector2.zero;
+            StudyVolumeRow.SetNavigation(menu, resume, canReview ? review : masterVolume.Slider);
+            StudyVolumeRow.SetNavigation(masterVolume.Slider, canReview ? review : menu, musicVolume.Slider);
             deaths.text = $"죽은 횟수  {count}회";
             masterVolume.Refresh();
             musicVolume.Refresh();
@@ -88,8 +95,8 @@ namespace BossTemplate
 
         private StudyVolumeRow CreateVolumeRow(Font font, string title, StudyAudioChannel channel, float y)
         {
-            var label = Label(content, title, font, 18, y, Ink);
-            var slider = CreateVolumeSlider(content, new Vector2(0, y - 28), Surface, Accent);
+            var label = Label(audioControls, title, font, 18, y, Ink);
+            var slider = CreateVolumeSlider(audioControls, new Vector2(0, y - 28), Surface, Accent);
             return new StudyVolumeRow(label, slider, title, channel);
         }
 

@@ -15,7 +15,10 @@ HEADERS = {
         "boss_hp_remaining difficulty_level result boss_phase phase_progress_percent progress"
     ),
     "PatternStats": "participant_id attempt_id pattern_id hit_count average_damage difficulty_parameters executions damage_taken",
-    "Surveys": "participant_id cleared actual_attempts achievement_score immersion_score fairness_score frustration_score retry_intention_score difficulty_score skipped",
+    "Surveys": (
+        "participant_id cleared actual_attempts achievement_score immersion_score fairness_score "
+        "frustration_score retry_intention_score difficulty_score skipped early_exit_rating"
+    ),
 }
 
 
@@ -60,14 +63,17 @@ def snapshot(store):
         for row in db.execute("SELECT payload FROM surveys ORDER BY participant_id"):
             s = json.loads(row[0])
             scores = s["scores"]
+            early_exit_rating = None
             if len(scores) == 1:
                 if s["cleared"]:
                     participants[s["participant_id"]]["star_rating"] = scores[0]
                 else:
+                    early_exit_rating = scores[0]
                     scores = []
             a, i, d, f, r, x = scores + [None] * (6 - len(scores))
             rows["Surveys"].append([
                 s["participant_id"], s["cleared"], s["actual_attempts"], a, i, f, x, r, d, s["skipped"],
+                early_exit_rating,
             ])
     rows["Participants"].extend([p[k] for k in rows["Participants"][0]] for p in participants.values())
     return revision, rows

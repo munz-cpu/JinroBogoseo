@@ -32,7 +32,6 @@ namespace BossTemplate
         [SerializeField] private AudioClip settingsOpenSound;
 
         private StudySession session;
-        private AudioSource menuAudio;
         private Vector3[] layerOrigins;
         private Vector3 sceneryScale, navigationScale, detailsScale, golemOrigin;
         private Vector2 detailsAnchor, detailsPosition, viewport;
@@ -61,12 +60,6 @@ namespace BossTemplate
             detailsGroup = details.gameObject.AddComponent<CanvasGroup>();
             details.GetComponent<Image>().raycastTarget = true;
             detailsBackdrop = CreateDetailsBackdrop();
-            if (settingsOpenSound)
-            {
-                menuAudio = gameObject.AddComponent<AudioSource>();
-                menuAudio.playOnAwake = false;
-                menuAudio.spatialBlend = 0;
-            }
             play.onClick.AddListener(session.OpenIntro);
             settings.onClick.AddListener(() => OpenDetails("설정", "", true));
             stats.onClick.AddListener(() => OpenDetails("통계", Stats()));
@@ -165,9 +158,14 @@ namespace BossTemplate
             AdvanceDetailsTransition();
         }
 
-        internal void CloseDetails()
+        private void CloseDetails() => CloseDetails(fromEscape: false);
+
+        internal void CloseDetailsFromEscape() => CloseDetails(fromEscape: true);
+
+        private void CloseDetails(bool fromEscape)
         {
             if (!details.gameObject.activeSelf || detailsTarget == 0) return;
+            if (fromEscape) session.PlayEscapeSound();
             detailsGroup.interactable = false;
             StartDetailsTransition(0, DetailsExitDuration);
         }
@@ -207,8 +205,7 @@ namespace BossTemplate
             if (settings)
             {
                 foreach (var row in volumeRows) row.Refresh();
-                if (menuAudio)
-                    menuAudio.PlayOneShot(settingsOpenSound, StudyAudioVolume.Get(StudyAudioChannel.Effects));
+                session.PlayMenuSound(settingsOpenSound);
             }
             else
             {

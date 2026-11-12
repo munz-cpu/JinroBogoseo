@@ -211,14 +211,16 @@ namespace BossTemplate
 
         private IEnumerator FistSlams()
         {
-            const int slamCount = 8;
+            bool faster = !arena.Study || arena.Study.Protocol.fasterFistSlams;
+            int slamCount = faster ? 12 : 8;
             const float speedIncreasePerSlam = .08f;
-            yield return PrepareSlam(0, 1);
+            float initialSpeed = faster ? 1.35f : 1;
+            yield return PrepareSlam(0, initialSpeed);
             for (int slam = 0; slam < slamCount && !arena.Finished; slam++)
             {
                 int index = slam % fists.Length;
                 SpriteRenderer fist = fists[index];
-                float speedMultiplier = 1 + slam * speedIncreasePerSlam;
+                float speedMultiplier = initialSpeed + slam * speedIncreasePerSlam;
                 Coroutine nextWindup = slam + 1 < slamCount
                     ? StartCoroutine(PrepareSlam((index + 1) % fists.Length, speedMultiplier + speedIncreasePerSlam))
                     : null;
@@ -231,7 +233,7 @@ namespace BossTemplate
                 arena.ShowRockLandingDust(impact, fist.bounds.size.x, playSound: false);
                 arena.ShakeImpact(impact, Vector2.down * .34f);
                 arena.PlayEffect(fistSlamSound);
-                Coroutine recovery = StartCoroutine(ReturnFist(index));
+                Coroutine recovery = StartCoroutine(ReturnFist(index, faster ? .32f : .55f));
                 if (nextWindup != null) yield return nextWindup;
                 else yield return recovery;
             }
@@ -520,7 +522,8 @@ namespace BossTemplate
             float edge = direction > 0 ? bounds.min.x : bounds.max.x;
             float startX = edge + direction * .6f;
             float catchX = edge + direction * Mathf.Min(index < OriginalFistCount ? 4.2f : 5.7f, bounds.extents.x);
-            bool stagedThrow = !arena.Study || arena.Study.Protocol.stagedRollingMineThrow;
+            bool aimedThrow = !arena.Study || arena.Study.Protocol.aimedRollingMineThrow;
+            bool stagedThrow = aimedThrow || arena.Study.Protocol.stagedRollingMineThrow;
             if (stagedThrow)
             {
                 Intent = "바닥 구르는 돌";
@@ -539,12 +542,19 @@ namespace BossTemplate
             var catchPosition = new Vector2(catchX, arena.GroundY + fist.bounds.extents.y);
             var rollStart = new Vector2(startX, rollY);
             float rollSpeed = index == 0 ? 5f : stagedThrow ? 7f : 9f;
+            float speedFactor = arena.Parameters(pattern).speed;
+            float rollDistance = Mathf.Abs(catchX - startX);
+            if (aimedThrow)
+            {
+                const float visibleRollBeforeReach = .35f;
+                rollSpeed = Mathf.Min(rollSpeed, Mathf.Max(.1f, rollDistance / ((visibleRollBeforeReach + reachDuration) * speedFactor)));
+            }
             ArenaProjectile rock = arena.SpawnRock(pattern, rollStart, Vector2.right * (direction * rollSpeed),
                 16, RockFlight.Rolling, holdTime: rollWarning);
             if (rock) rock.CatchAt(catchX, rollThroughContact: stagedThrow);
             if (stagedThrow && rock)
             {
-                float travelTime = Mathf.Abs(catchX - startX) / (rollSpeed * arena.Parameters(pattern).speed);
+                float travelTime = rollDistance / (rollSpeed * speedFactor);
                 yield return new WaitForSeconds(Mathf.Max(0, rollWarning + travelTime - reachDuration));
                 if (arena.Finished) yield break;
             }
@@ -560,6 +570,13 @@ namespace BossTemplate
                 arena.PlayEffect(fistImpactSound);
                 Vector2 grip = (Vector2)rock.transform.position - catchPosition;
                 Vector2 raised = catchPosition + Vector2.up * 3.5f;
+                if (aimedThrow)
+                {
+                    yield return AimAndThrowMine(fist, rock, grip, raised);
+                    if (arena.Finished) yield break;
+                    yield return ReturnFist(index, .33f);
+                    yield break;
+                }
                 if (stagedThrow)
                 {
                     float throwDirection = PlayerPosition.x >= catchX ? 1 : -1;
@@ -589,6 +606,55 @@ namespace BossTemplate
             }
 
             yield return ReturnFist(index, .33f);
+        }
+
+        private IEnumerator AimAndThrowMine(SpriteRenderer fist, ArenaProjectile rock, Vector2 grip, Vector2 raised)
+        {
+            const float aimDuration = .7f;
+            const float pullbackDuration = .5f;
+            const float throwSpeed = 80f;
+            Bounds bounds = arena.GroundBounds;
+            float floor = arena.GroundY + ArenaProjectile.MineLandingOffset;
+            var aimColor = new Color(1, .3f, .16f, .85f);
+            Intent = "돌을 들어 조준";
+            yield return CarryRock(fist, rock, grip, raised, .18f, 0);
+            if (arena.Finished || !rock.IsHeldByFist) yield break;
+
+            Vector2 destination = new Vector2(raised.x, floor);
+            GameObject aimLine = arena.Flash(rock.transform.position, Vector2.one, aimColor, aimDuration);
+            for (float elapsed = 0; elapsed < aimDuration && !arena.Finished && rock.IsHeldByFist; elapsed += Time.deltaTime)
+            {
+                destination.x = Mathf.Clamp(PlayerPosition.x, bounds.min.x + 1, bounds.max.x - 1);
+                fist.flipX = destination.x < rock.transform.position.x;
+                SetThrowLine(aimLine, rock.transform.position, destination, .065f);
+                yield return null;
+            }
+            if (arena.Finished || !rock.IsHeldByFist) yield break;
+
+            Intent = "조준을 고정하고 손을 뒤로 뺀다";
+            float direction = fist.flipX ? -1 : 1;
+            var pullback = new Vector2(ClampFistX(raised.x - direction * 3f, fist), raised.y + .7f);
+            yield return CarryRock(fist, rock, grip, pullback, pullbackDuration, 28f * direction);
+            float forwardReach = Mathf.Min(1.1f, Mathf.Abs(destination.x - raised.x) * .5f);
+            var release = new Vector2(ClampFistX(raised.x + direction * forwardReach, fist), raised.y - .35f);
+            yield return CarryRock(fist, rock, grip, release, .08f, -20f * direction);
+            if (arena.Finished || !rock.IsHeldByFist) yield break;
+
+            Intent = "구르는 돌을 잡아 지뢰 투척";
+            Vector2 origin = rock.transform.position;
+            rock.ThrowHeldMine((destination - origin).normalized * throwSpeed, 15, destination);
+            SetThrowLine(arena.Flash(origin, Vector2.one, new Color(1, .75f, .42f, .65f), .08f),
+                origin, destination, .16f);
+            arena.PlayEffect(fistImpactSound);
+        }
+
+        private static void SetThrowLine(GameObject line, Vector2 origin, Vector2 destination, float width)
+        {
+            if (!line || !line.activeSelf) return;
+            Vector2 path = destination - origin;
+            float angle = Mathf.Atan2(path.y, path.x) * Mathf.Rad2Deg;
+            line.transform.SetPositionAndRotation((origin + destination) * .5f, Quaternion.Euler(0, 0, angle));
+            line.transform.localScale = new Vector3(path.magnitude, width, 1);
         }
 
         private IEnumerator CarryRock(SpriteRenderer fist, ArenaProjectile rock, Vector2 grip,

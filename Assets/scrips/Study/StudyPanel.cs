@@ -97,6 +97,7 @@ namespace BossTemplate
         private void Update()
         {
             if (!session) return;
+            if (Mouse.current?.leftButton.wasReleasedThisFrame == true) session.QueueMenuClick();
             screenSlide?.Advance();
             if (contactFeedbackUntil > 0 && Time.unscaledTime >= contactFeedbackUntil)
             {
@@ -105,7 +106,7 @@ namespace BossTemplate
             }
             var keyboard = Keyboard.current;
             bool escape = keyboard?.escapeKey.wasPressedThisFrame == true;
-            if (attempt && escape) session.TogglePause();
+            if (attempt && escape) session.TogglePauseFromEscape();
             else if (session.Screen == StudyScreen.Defeat && keyboard != null
                 && (keyboard.enterKey.wasPressedThisFrame || keyboard.numpadEnterKey.wasPressedThisFrame))
                 session.BeginAttempt();
@@ -115,9 +116,9 @@ namespace BossTemplate
                 mainMenu.AnimateParallax();
             if (session.Screen == StudyScreen.Title)
             {
-                if (escape) mainMenu.CloseDetails();
+                if (escape) mainMenu.CloseDetailsFromEscape();
             }
-            else if (escape) session.BackToTitle();
+            else if (escape) session.BackToTitleFromEscape();
         }
 
         internal void ShowPause(bool paused)

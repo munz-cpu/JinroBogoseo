@@ -30,6 +30,7 @@ namespace BossTemplate
         private float damage, radius, launchAt, expires, fuse;
         private float rockGroundOffset;
         private float? fistCatchX;
+        private Vector2? thrownMineDestination;
         private bool hostile;
         private bool isRock;
         private bool planted;
@@ -67,6 +68,7 @@ namespace BossTemplate
             isRock = rock;
             flight = mode;
             fistCatchX = null;
+            thrownMineDestination = null;
             radius = enemy ? .65f * hitboxFactor : owner.Boss.ProjectileHitRadius;
             launchAt = Time.time + holdTime;
             expires = launchAt + (mode switch
@@ -111,12 +113,15 @@ namespace BossTemplate
             this.rollThroughContact = rollThroughContact;
         }
 
-        internal void ThrowHeldMine(Vector2 speed, float amount)
+        internal void ThrowHeldMine(Vector2 speed, float amount, Vector2? destination = null)
         {
             if (!IsHeldByFist) return;
             int remainingHits = rockHits;
+            Vector3 heldScale = transform.localScale;
             Initialize(arena, speed, amount, true, surface.sprite, shellSprite, RockFlight.Mine, true, 0, pattern);
             rockHits = Mathf.Min(rockHits, remainingHits);
+            thrownMineDestination = destination;
+            if (destination.HasValue) transform.localScale = heldScale;
         }
 
         internal void LaunchAirHockey(float duration, AudioClip bounceSound)
@@ -197,7 +202,7 @@ namespace BossTemplate
             Vector2 from = transform.position;
             float step = Time.deltaTime * motionSpeed;
             if (flight == RockFlight.Skipping) velocity.y -= RockGravity * step;
-            else if (flight == RockFlight.Mine) velocity.y -= MineGravity * step;
+            else if (flight == RockFlight.Mine && !thrownMineDestination.HasValue) velocity.y -= MineGravity * step;
             Vector2 to = from + velocity * step;
             bool caught = false;
             if (IsRollingToFist && fistCatchX is float catchX && (velocity.x > 0 ? to.x >= catchX : to.x <= catchX))
@@ -208,7 +213,12 @@ namespace BossTemplate
             float floor = arena.GroundY + rockGroundOffset;
             bool reachedFloor = (flight is RockFlight.Falling or RockFlight.Skipping or RockFlight.Crashing or RockFlight.Mine)
                 && velocity.y < 0 && to.y <= floor;
-            if (reachedFloor)
+            if (thrownMineDestination is Vector2 destination)
+            {
+                to = Vector2.MoveTowards(from, destination, velocity.magnitude * step);
+                reachedFloor = to.Equals(destination);
+            }
+            else if (reachedFloor)
                 to = Vector2.Lerp(from, to, Mathf.InverseLerp(from.y, to.y, floor));
 
             if (flight != RockFlight.Launch && ResolveHit(from, to)) return;
@@ -233,6 +243,7 @@ namespace BossTemplate
                     arena.ShowRockLandingDust(impact, surface.bounds.size.x);
                     to.y = floor;
                     planted = true;
+                    thrownMineDestination = null;
                     fuse = arena.RockFuse;
                     expires = Time.time + fuse;
                     transform.localScale = Vector3.one * (1.35f * RockSizeMultiplier);
@@ -405,7 +416,8 @@ namespace BossTemplate
 
         internal float BulletContactTime(Vector2 from, Vector2 to)
         {
-            if (!gameObject.activeSelf || !isRock || flight == RockFlight.AirHockey)
+            // Aimed throws must reach the locked landing point before they can be broken.
+            if (!gameObject.activeSelf || !isRock || flight == RockFlight.AirHockey || thrownMineDestination.HasValue)
                 return float.PositiveInfinity;
 
             Bounds bounds = Planted

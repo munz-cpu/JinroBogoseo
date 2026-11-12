@@ -7,6 +7,7 @@ namespace BossTemplate
     public sealed class StudySettings : ScriptableObject
     {
         public Font font;
+        [SerializeField] internal AudioClip menuClickSound, menuEscapeSound, menuStartSound;
         public StudyProtocol protocol = new StudyProtocol();
     }
 
@@ -16,7 +17,7 @@ namespace BossTemplate
         private const string DebriefContactNotice = "기록 제외를 원하면 참가자 ID와 함께 아래 문의처로 연락해 주세요.";
         [Header("서버와 연구 버전")]
         public string apiUrl = "http://127.0.0.1:8000";
-        public string settingsVersion = "combat-v10";
+        public string settingsVersion = "combat-v11";
         public string consentVersion = "consent-v6";
         [Header("동의와 사후 안내")]
         [TextArea(4, 10)] public string consentNotice =
@@ -39,6 +40,10 @@ namespace BossTemplate
         public bool enhancedFourHandPatterns;
         [InspectorName("구르는 돌 잡기와 투척 예고 강화")]
         public bool stagedRollingMineThrow;
+        [InspectorName("구르는 돌 추적 조준과 고속 투척")]
+        public bool aimedRollingMineThrow;
+        [InspectorName("2페이즈 연속 내려찍기 가속")]
+        public bool fasterFistSlams;
         [Range(0, 1)] public float minimumLevel = 0;
         [Range(0, 1)] public float maximumLevel = 1;
         [Tooltip("X는 낮은 난이도, Y는 높은 난이도의 보스 체력 배수입니다.")]

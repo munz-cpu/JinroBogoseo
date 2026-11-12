@@ -41,6 +41,8 @@ namespace BossTemplate
         private StudySave state;
         private readonly List<ArchiveUpload> archiveUploads = new List<ArchiveUpload>();
         private StudyPanel panel;
+        private AudioSource menuAudio;
+        private int menuClickFrame = -1, menuSoundFrame = -1;
         private StudyLoadingScreen loadingScreen;
         private AsyncOperation sceneLoad;
         private float startTime, checkpointAt, nextSend;
@@ -113,6 +115,10 @@ namespace BossTemplate
                 return;
             }
             asset = settings;
+            menuAudio = gameObject.AddComponent<AudioSource>();
+            menuAudio.playOnAwake = false;
+            menuAudio.spatialBlend = 0;
+            menuAudio.ignoreListenerPause = true;
             storage = new StudyStorage(Application.persistentDataPath);
             try
             {
@@ -152,15 +158,41 @@ namespace BossTemplate
         internal void OpenIntro()
         {
             if (Screen != StudyScreen.Title || changingScene) return;
+            PlayMenuSound(asset.menuStartSound);
             if (CanReplay) StartNewStudy();
             else if (state.participant != null) RestoreScreen();
             else Show(StudyScreen.Consent);
         }
 
-        internal void BackToTitle()
+        internal void BackToTitle() => BackToTitle(fromEscape: false);
+
+        internal void BackToTitleFromEscape() => BackToTitle(fromEscape: true);
+
+        private void BackToTitle(bool fromEscape)
         {
-            if (!changingScene && (Screen is StudyScreen.Consent or StudyScreen.Waiting or StudyScreen.Declined))
-                Show(StudyScreen.Title);
+            if (changingScene || Screen is not (StudyScreen.Consent or StudyScreen.Waiting or StudyScreen.Declined)) return;
+            if (fromEscape) PlayEscapeSound();
+            Show(StudyScreen.Title);
+        }
+
+        internal void QueueMenuClick()
+        {
+            if (!changingScene && (!InCombat || Paused)) menuClickFrame = Time.frameCount;
+        }
+
+        private void LateUpdate()
+        {
+            int frame = Time.frameCount;
+            if (menuClickFrame == frame && menuSoundFrame != frame) PlayMenuSound(asset.menuClickSound);
+        }
+
+        internal void PlayEscapeSound() => PlayMenuSound(asset.menuEscapeSound);
+
+        internal void PlayMenuSound(AudioClip clip)
+        {
+            if (!menuAudio || !clip) return;
+            menuSoundFrame = Time.frameCount;
+            menuAudio.PlayOneShot(clip, StudyAudioVolume.Get(StudyAudioChannel.Effects));
         }
 
         internal void Enroll() => Enroll(offline: false);
@@ -313,14 +345,19 @@ namespace BossTemplate
             }
         }
 
-        internal void TogglePause()
+        internal void TogglePause() => TogglePause(fromEscape: false);
+
+        internal void TogglePauseFromEscape() => TogglePause(fromEscape: true);
+
+        private void TogglePause(bool fromEscape)
         {
+            if (!Paused && !CanPause) return;
+            if (fromEscape) PlayEscapeSound();
             if (Paused)
             {
                 Resume();
                 return;
             }
-            if (!CanPause) return;
             pausedAt = Time.realtimeSinceStartup;
             previousTimeScale = Time.timeScale;
             previousAudioPause = AudioListener.pause;

@@ -54,6 +54,20 @@ namespace BossTemplate
         public int RoundsRemaining { get; private set; }
         public float Cooldown(int index) => Mathf.Max(0, ready[index] - Time.time);
 
+#if UNITY_WEBGL && !UNITY_EDITOR
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void GolemListenForRightShift();
+
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern void GolemStopListeningForRightShift();
+
+        [System.Runtime.InteropServices.DllImport("__Internal")]
+        private static extern int GolemConsumeRightShiftPress();
+
+        private void OnEnable() => GolemListenForRightShift();
+        private void OnDisable() => GolemStopListeningForRightShift();
+#endif
+
         internal bool OverlapsPlantedRock(float rockX)
         {
             Vector3 position = transform.position;
@@ -90,6 +104,10 @@ namespace BossTemplate
 
         private void Update()
         {
+            bool browserDash = false;
+#if UNITY_WEBGL && !UNITY_EDITOR
+            browserDash = GolemConsumeRightShiftPress() != 0;
+#endif
             if (arena.Study && arena.Study.BlocksGameplayInput) return;
             body.color = Time.time < Health.InvulnerableUntil ? Color.white : baseColor;
             bool finished = arena.Finished;
@@ -107,7 +125,8 @@ namespace BossTemplate
             float axis = (k.dKey.isPressed || k.rightArrowKey.isPressed ? 1 : 0) - (k.aKey.isPressed || k.leftArrowKey.isPressed ? 1 : 0);
             bool down = k.sKey.isPressed || k.downArrowKey.isPressed;
             bool jump = k.wKey.wasPressedThisFrame || k.upArrowKey.wasPressedThisFrame || k.spaceKey.wasPressedThisFrame;
-            if (dashRemaining <= 0 && (k.leftShiftKey.wasPressedThisFrame || k.rightShiftKey.wasPressedThisFrame) && Use(0))
+            bool dashPressed = browserDash || k.leftShiftKey.wasPressedThisFrame || k.rightShiftKey.wasPressedThisFrame;
+            if (dashRemaining <= 0 && dashPressed && Use(0))
             {
                 if (axis != 0) facing = axis > 0 ? 1 : -1;
                 dashRemaining = dashDuration;

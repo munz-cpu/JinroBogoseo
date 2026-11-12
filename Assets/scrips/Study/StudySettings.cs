@@ -17,7 +17,7 @@ namespace BossTemplate
         private const string DebriefContactNotice = "기록 제외를 원하면 참가자 ID와 함께 아래 문의처로 연락해 주세요.";
         [Header("서버와 연구 버전")]
         public string apiUrl = "http://127.0.0.1:8000";
-        public string settingsVersion = "combat-v14";
+        public string settingsVersion = "combat-v15";
         public string consentVersion = "consent-v6";
         [Header("동의와 사후 안내")]
         [TextArea(4, 10)] public string consentNotice =
@@ -59,6 +59,14 @@ namespace BossTemplate
         [Range(0, 1)] public float maximumLevel = 1;
         [Tooltip("X는 낮은 난이도, Y는 높은 난이도의 보스 체력 배수입니다.")]
         public Vector2 bossHealth = new Vector2(.94f, 1.12f);
+        [InspectorName("연속 실패 시 추가 난이도 완화")]
+        public bool strongRetryAssistance;
+        [Range(.2f, 1), InspectorName("반복 실패 후 보스 체력 배수")]
+        public float lateRetryHealthFactor = 1;
+        [Range(.1f, 1), InspectorName("반복 실패 후 패턴 피해량 배수")]
+        public float lateRetryDamageFactor = 1;
+        [Range(.1f, 1), InspectorName("반복 사망 후 탁구 패턴 가중치 배수")]
+        public float airHockeyAfterDeathsWeight = 1;
         [Tooltip("패턴 등장 가중치의 X는 낮은 난이도, Y는 높은 난이도입니다.")]
         public PatternRange defaultPattern = new PatternRange();
         [Tooltip("Pattern Id가 일치하는 공격에 개별 배수를 적용합니다. 예: fist_sweep")]

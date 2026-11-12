@@ -214,10 +214,10 @@ namespace BossTemplate
             Player.ResetState(); Boss.ResetState();
         }
 
-        internal void EndStudyFight()
+        internal void EndStudyFight(bool stopAudio = true)
         {
             Boss.StopAllCoroutines();
-            ClearAttacks();
+            ClearAttacks(stopAudio);
             if (healthOrb) healthOrb.gameObject.SetActive(false);
         }
 
@@ -249,10 +249,11 @@ namespace BossTemplate
         }
 #endif
 
-        internal void PlayEffect(AudioClip clip)
+        internal void PlayEffect(AudioClip clip, bool stopCurrent = false)
         {
-            if (!clip || !effectsAudio) return;
-            effectsAudio.PlayOneShot(clip);
+            if (!effectsAudio) return;
+            if (stopCurrent) effectsAudio.Stop();
+            if (clip) effectsAudio.PlayOneShot(clip);
         }
         private void Update()
         {

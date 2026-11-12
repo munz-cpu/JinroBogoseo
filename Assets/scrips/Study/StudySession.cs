@@ -279,7 +279,7 @@ namespace BossTemplate
             string now = Now();
             int number = state.attempts + 1;
             var difficulty = AdaptiveDifficulty.Choose(Protocol, state.recent, number,
-                state.assignment.target_attempts, now, out var change, state.assignment.FixedHard);
+                state.assignment.target_attempts, now, out var change, state.assignment.FixedHard, deaths: state.deaths);
             state.active = new AttemptRecord
             {
                 participant_id = state.participant.participant_id, attempt_id = Guid.NewGuid().ToString("D"),
@@ -438,7 +438,7 @@ namespace BossTemplate
                         Time.timeScale = 0;
                         arena.Boss.StopAllCoroutines();
                     }
-                    else arena.EndStudyFight();
+                    else arena.EndStudyFight(stopAudio: result != "defeat");
                 }
                 if (nextScreen.HasValue) Show(nextScreen.Value);
                 else if (result == "defeat" && !quitting) Show(StudyScreen.Defeat);

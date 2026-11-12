@@ -7771,7 +7771,7 @@ MonoBehaviour:
   - {fileID: 852482774}
   - {fileID: 35347868}
   hitSound: {fileID: 0}
-  defeatSound: {fileID: 0}
+  defeatSound: {fileID: 8300000, guid: eb8e78baa57424a47b7fbcd13332e021, type: 3}
 --- !u!212 &1149462641
 SpriteRenderer:
   serializedVersion: 3

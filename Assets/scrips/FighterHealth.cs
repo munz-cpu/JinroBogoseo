@@ -69,7 +69,9 @@ namespace BossTemplate
                 if (arena) arena.Study?.RecordDamage(this, lostHealth, pattern);
                 LastDamageTime = Time.time;
                 if (flash) hitFlashUntil = Time.time + HitFlashDuration;
-                if (arena) arena.PlayEffect(Dead && defeatSound ? defeatSound : hitSound);
+                if (arena)
+                    arena.PlayEffect(Dead && defeatSound ? defeatSound : hitSound,
+                        stopCurrent: Dead && this == arena.Player.Health);
             }
             return true;
         }

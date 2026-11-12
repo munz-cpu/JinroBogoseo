@@ -117,7 +117,8 @@ internal sealed class StudySessionInspector : Editor
         previewAttempt = attempt;
         var history = state != null ? (System.Collections.Generic.IReadOnlyList<AttemptRecord>)state.recent : Array.Empty<AttemptRecord>();
         preview = AdaptiveDifficulty.Choose(protocol, history, attempt,
-            previewAssignment?.target_attempts ?? 1, StudySession.Now(), out _, previewAssignment?.FixedHard == true);
+            previewAssignment?.target_attempts ?? 1, StudySession.Now(), out _, previewAssignment?.FixedHard == true,
+            deaths: state?.deaths ?? 0);
         return preview;
     }
 

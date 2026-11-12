@@ -607,6 +607,28 @@ internal static class BossStudyChecks
         Check(fixedFirst.level == profiles.maximumLevel && fixedChange.reason == "fixed_hard"
             && JsonUtility.ToJson(fixedFirst) == JsonUtility.ToJson(fixedLater),
             "The fixed-hard group must keep the same profile after a defeat or reaching the target");
+        if (protocol.strongRetryAssistance)
+        {
+            var empty = Array.Empty<AttemptRecord>();
+            var start = AdaptiveDifficulty.Choose(protocol, empty, 1, 7, now, out _);
+            var near = AdaptiveDifficulty.Choose(protocol, empty, 10, 7, now, out _, deaths: 9);
+            var late = AdaptiveDifficulty.Choose(protocol, empty, 15, 7, now, out var lateChange, deaths: 14);
+            var held = AdaptiveDifficulty.Choose(protocol, empty, 25, 7, now, out _, deaths: 24);
+            Check(near.boss_health < start.boss_health && late.boss_health < near.boss_health && lateChange.reason == "struggling",
+                "Retry assistance reduces boss health around the target and further after it");
+            Check(late.ParametersFor(BossPattern.fist_cross_slam).damage < near.ParametersFor(BossPattern.fist_cross_slam).damage
+                && Mathf.Approximately(late.ParametersFor(BossPattern.fist_cross_slam).damage, protocol.lateRetryDamageFactor),
+                "Late retry assistance reduces four-hand damage to the configured floor");
+            var fewerDeaths = AdaptiveDifficulty.Choose(protocol, empty, 15, 7, now, out _, deaths: 3);
+            Check(fewerDeaths.boss_health == late.boss_health
+                && fewerDeaths.ParametersFor(BossPattern.air_hockey).selection_weight
+                    > late.ParametersFor(BossPattern.air_hockey).selection_weight,
+                "Air hockey weight uses deaths independently of attempt number");
+            Check(JsonUtility.ToJson(late) == JsonUtility.ToJson(held), "Retry assistance stops at the configured floor");
+            var hardStart = AdaptiveDifficulty.Choose(protocol, empty, 1, 12, now, out _, fixedHard: true);
+            var hardLate = AdaptiveDifficulty.Choose(protocol, empty, 20, 12, now, out _, fixedHard: true, deaths: 19);
+            Check(JsonUtility.ToJson(hardStart) == JsonUtility.ToJson(hardLate), "Retry assistance excludes the fixed-hard group");
+        }
         var report = new List<string> { "PASS: goal curves for 3, 7, 12, and 20 attempts, subtle durability, fixed attack timings, support rain, legacy history, pattern weights, and fixed hard. Synthetic play model, seed 315." };
         var rng = new System.Random(315);
         foreach (int target in new[] { 3, 7, 12 })
@@ -619,7 +641,7 @@ internal static class BossStudyChecks
                 history.Clear();
                 for (int attempt = 1; attempt <= 24; attempt++)
                 {
-                    var profile = AdaptiveDifficulty.Choose(protocol, history, attempt, target, now, out _);
+                    var profile = AdaptiveDifficulty.Choose(protocol, history, attempt, target, now, out _, deaths: attempt - 1);
                     float performance = skill + .018f * (attempt - 1) - .55f * profile.level
                         + .65f * ((float)rng.NextDouble() - .5f);
                     if (performance >= .50f)

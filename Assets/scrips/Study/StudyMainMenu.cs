@@ -34,6 +34,7 @@ namespace BossTemplate
         [SerializeField] private RectTransform navigation, details;
         [SerializeField] private float golemTravel = 12;
         [SerializeField] private Button play, howToPlay, settings, stats, terms, back, backToMenu;
+        [SerializeField] private Button windowsDownload;
         [SerializeField] private Text playLabel, heading, body, volumeLabel;
         [SerializeField] private ScrollRect scroll;
         [SerializeField] private Slider volume;
@@ -61,7 +62,7 @@ namespace BossTemplate
             sceneryScale = scenery.transform.localScale;
             golemLayer.sortingOrder = ArenaBoss.GiantSortingOrder;
             navigationScale = navigation.localScale;
-            if (Application.platform == RuntimePlatform.WebGLPlayer) AddWindowsDownloadButton();
+            BindWindowsDownloadButton();
             navigationSlide = new StudySlideIn((RectTransform)transform, navigation);
             detailsScale = details.localScale;
             detailsAnchor = details.anchorMin;
@@ -81,22 +82,17 @@ namespace BossTemplate
             BindVolumeRows();
         }
 
-        private void AddWindowsDownloadButton()
+        private void BindWindowsDownloadButton()
         {
-            const string label = "Windows 버전 다운로드";
-            var download = Instantiate(terms, navigation, false);
-            download.gameObject.name = label;
-            var text = download.GetComponentInChildren<Text>();
-            text.text = label;
-            text.fontSize = 25;
+            bool visible = Application.isEditor || Application.platform == RuntimePlatform.WebGLPlayer;
+            windowsDownload.gameObject.SetActive(visible);
+            if (!visible) return;
 
-            var downloadRect = (RectTransform)download.transform;
-            downloadRect.anchoredPosition += Vector2.down * 51;
-            StudyVolumeRow.SetNavigation(terms, stats, download);
-            StudyVolumeRow.SetNavigation(download, terms, play);
-            StudyVolumeRow.SetNavigation(play, download, howToPlay);
-            download.onClick.AddListener(() => Application.OpenURL(WindowsDownloadUrl));
-            StudyTextHover.Attach(download);
+            StudyVolumeRow.SetNavigation(terms, stats, windowsDownload);
+            StudyVolumeRow.SetNavigation(windowsDownload, terms, play);
+            StudyVolumeRow.SetNavigation(play, windowsDownload, howToPlay);
+            windowsDownload.onClick.AddListener(() => Application.OpenURL(WindowsDownloadUrl));
+            StudyTextHover.Attach(windowsDownload);
         }
 
         private void BindVolumeRows()

@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 
 namespace BossTemplate
@@ -20,14 +21,34 @@ namespace BossTemplate
 
             StudyAudioVolume.ChannelsChanged += ApplyVolume;
             ApplyVolume();
+            if (Application.platform == RuntimePlatform.WebGLPlayer)
+            {
+                StartCoroutine(PlayWebMusic());
+                return;
+            }
+
             double start = AudioSettings.dspTime + 0.1;
             double openingDuration = (double)opening.clip.samples / opening.clip.frequency;
             opening.PlayScheduled(start);
             loop.PlayScheduled(start + openingDuration);
         }
 
+        private IEnumerator PlayWebMusic()
+        {
+            opening.Play();
+            do
+            {
+                yield return null;
+            }
+            while (opening.isPlaying || AudioListener.pause);
+
+            opening.Stop();
+            loop.Play();
+        }
+
         private void OnDisable()
         {
+            StopAllCoroutines();
             StudyAudioVolume.ChannelsChanged -= ApplyVolume;
             if (opening) opening.Stop();
             if (loop) loop.Stop();

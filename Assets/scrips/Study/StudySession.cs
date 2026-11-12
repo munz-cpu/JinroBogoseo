@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Security.Cryptography;
 using System.Text;
@@ -14,6 +15,8 @@ namespace BossTemplate
 
     internal sealed class StudySession : MonoBehaviour
     {
+        private static readonly TimeSpan InactivityLimit = TimeSpan.FromMinutes(30);
+
         private sealed class ArchiveUpload
         {
             internal readonly StudySave save;
@@ -45,8 +48,9 @@ namespace BossTemplate
         private int menuClickFrame = -1, menuSoundFrame = -1;
         private StudyLoadingScreen loadingScreen;
         private AsyncOperation sceneLoad;
-        private float startTime, checkpointAt, nextSend;
+        private float startTime, checkpointAt, nextSend, nextInactivityCheck;
         private float pausedAt, previousTimeScale;
+        private DateTime pausedAtUtc;
         private bool previousAudioPause;
         private bool victoryFrozen;
         private int resumedFrame = -1;
@@ -71,6 +75,7 @@ namespace BossTemplate
         private float ElapsedSeconds => (Paused ? pausedAt : (arena ? arena.Boss.DefeatedAt : null)
             ?? Time.realtimeSinceStartup) - startTime;
         internal bool Cleared => state.cleared;
+        internal bool InactivityClosed => state.inactivityClosed;
         internal bool WithdrawalPending => state.withdrawalPending;
         // A save written before enrollment can deserialize with an empty protocol object.
         internal StudyProtocol Protocol => (state?.participant != null ? state.protocol : null) ?? asset.protocol;
@@ -125,12 +130,13 @@ namespace BossTemplate
                 state = storage.Load();
                 foreach (var archive in storage.LoadPendingArchives(state.participant?.participant_id))
                     archiveUploads.Add(new ArchiveUpload(archive));
+                if (ExpireInactiveStudy(recovering: true)) return;
                 if (state.active != null)
                 {
                     // The last durable checkpoint marks the end of a process that could not shut down cleanly.
                     Finish("interrupted", useCheckpoint: true, nextScreen: StudyScreen.Title);
                 }
-                else if (state.withdrawalPending || state.withdrawn) RestoreScreen();
+                else if (state.withdrawalPending || state.withdrawn || state.inactivityClosed) RestoreScreen();
                 else Show(StudyScreen.Title);
             }
             catch (Exception error) when (error is IOException or UnauthorizedAccessException or ArgumentException)
@@ -158,6 +164,7 @@ namespace BossTemplate
         internal void OpenIntro()
         {
             if (Screen != StudyScreen.Title || changingScene) return;
+            if (ExpireInactiveStudy()) return;
             PlayMenuSound(asset.menuStartSound);
             if (CanReplay) StartNewStudy();
             else if (state.participant != null) RestoreScreen();
@@ -270,6 +277,7 @@ namespace BossTemplate
         {
             if (Screen is not (StudyScreen.Ready or StudyScreen.Defeat)
                 || state.assignment == null || !arena || changingScene || Paused) return;
+            if (ExpireInactiveStudy()) return;
             if (Screen == StudyScreen.Defeat) resumedFrame = Time.frameCount;
             StartAttempt();
         }
@@ -355,10 +363,17 @@ namespace BossTemplate
             if (fromEscape) PlayEscapeSound();
             if (Paused)
             {
+                if (ExpireInactiveStudy()) return;
                 Resume();
+                if (InCombat)
+                {
+                    Sample();
+                    Persist();
+                }
                 return;
             }
             pausedAt = Time.realtimeSinceStartup;
+            pausedAtUtc = DateTime.UtcNow;
             previousTimeScale = Time.timeScale;
             previousAudioPause = AudioListener.pause;
             Paused = true;
@@ -387,6 +402,7 @@ namespace BossTemplate
         internal void ReturnToMenu()
         {
             if (!Paused) return;
+            if (ExpireInactiveStudy()) return;
             if (InCombat) Finish("interrupted", nextScreen: StudyScreen.Title);
             else Show(StudyScreen.Title);
         }
@@ -396,7 +412,8 @@ namespace BossTemplate
             var attempt = state.active;
             attempt.duration_seconds = ElapsedSeconds;
             string now = arena.Boss.DefeatedAt is float defeatedAt
-                ? DateTime.UtcNow.AddSeconds(defeatedAt - Time.realtimeSinceStartup).ToString("O") : Now();
+                ? DateTime.UtcNow.AddSeconds(defeatedAt - Time.realtimeSinceStartup).ToString("O")
+                : Paused ? pausedAtUtc.ToString("O") : Now();
             attempt.ended_at = string.CompareOrdinal(now, attempt.started_at) >= 0 ? now : attempt.started_at;
             attempt.boss_hp_remaining = arena.StudyBossHealthRemaining;
             attempt.boss_phase = arena.Boss.Phase;
@@ -427,6 +444,7 @@ namespace BossTemplate
                 if (state.recent.Count > 4) state.recent.RemoveAt(0);
             }
             Enqueue("attempts", attempt);
+            if (result == "stopped") CloseStudy(null);
             if (Persist())
             {
                 if (arena)
@@ -473,6 +491,29 @@ namespace BossTemplate
             state.recent.Clear();
         }
 
+        internal static bool ReachedInactivityLimit(string lastCombatAt, DateTimeOffset now) =>
+            DateTimeOffset.TryParseExact(lastCombatAt, "O", CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out var lastCombat) && now - lastCombat >= InactivityLimit;
+
+        private bool ExpireInactiveStudy(bool recovering = false)
+        {
+            if (changingScene || state.assignment == null || state.debrief || state.surveyDue
+                || state.withdrawalPending || state.withdrawn || state.active != null && !Paused && !recovering)
+                return false;
+
+            string lastCombatAt = (state.active ?? state.lastAttempt)?.ended_at;
+            if (!ReachedInactivityLimit(lastCombatAt, DateTimeOffset.UtcNow)) return false;
+
+            state.inactivityClosed = true;
+            if (state.active != null) Finish("stopped", useCheckpoint: recovering);
+            else
+            {
+                CloseStudy(null);
+                if (Persist()) RestoreScreen();
+            }
+            return true;
+        }
+
         internal void Withdraw()
         {
             if (Screen != StudyScreen.Debrief && Screen != StudyScreen.Waiting) return;
@@ -517,7 +558,7 @@ namespace BossTemplate
             state.protocol = null;
             state.attempts = 0;
             state.deaths = 0;
-            state.cleared = state.debrief = state.surveyDue = false;
+            state.cleared = state.debrief = state.surveyDue = state.inactivityClosed = false;
         }
 
         internal void Retry()
@@ -556,6 +597,11 @@ namespace BossTemplate
         private void Update()
         {
             if (fatal || state == null) return;
+            if (Time.realtimeSinceStartup >= nextInactivityCheck)
+            {
+                nextInactivityCheck = Time.realtimeSinceStartup + 1;
+                if (ExpireInactiveStudy()) return;
+            }
             if (InCombat && !Paused && arena.ResultsReady)
                 Finish(arena.Player.Health.Dead ? "defeat" : "cleared");
             if (InCombat && !Paused && Time.realtimeSinceStartup >= checkpointAt)
@@ -860,6 +906,7 @@ namespace BossTemplate
         private void OnApplicationQuit()
         {
             quitting = true;
+            if (!fatal && state != null && ExpireInactiveStudy()) return;
             if (InCombat && !fatal)
             {
                 string result = arena.CombatEnded ? (arena.Player.Health.Dead ? "defeat" : "cleared") : "interrupted";

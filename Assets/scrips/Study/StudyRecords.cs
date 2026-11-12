@@ -127,7 +127,7 @@ namespace BossTemplate
         public List<AttemptRecord> recent = new List<AttemptRecord>();
         public List<PendingSubmission> pending = new List<PendingSubmission>();
         public bool surveyDue, cleared, debrief, declined, withdrawalPending, withdrawn;
-        public bool offlineRegistrationPending;
+        public bool offlineRegistrationPending, inactivityClosed;
         public string withdrawalParticipantId, withdrawalApiUrl;
     }
 }

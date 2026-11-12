@@ -172,7 +172,10 @@ namespace BossTemplate
                     PreviewRating();
                     break;
                 case StudyScreen.Debrief:
-                    debrief.text = session.Protocol.DebriefText;
+                    debrief.text = session.InactivityClosed
+                        ? "30분 동안 보스전을 진행하지 않아 이번 연구 참여가 종료되었습니다. 다시 참여하면 첫 도전부터 시작합니다.\n\n"
+                            + session.Protocol.DebriefText
+                        : session.Protocol.DebriefText;
                     participant.text = $"참가자 ID  {session.ParticipantId}";
                     contact.text = $"문의  {session.Protocol.contact}";
                     contactFeedbackUntil = 0;

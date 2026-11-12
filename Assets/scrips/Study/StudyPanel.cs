@@ -58,16 +58,11 @@ namespace BossTemplate
             }
             foreach (var screen in screens)
                 if (screen) screen.SetActive(false);
-            if (enroll)
+            if (enroll && cancelRegistration)
             {
-                enrollOffline = AddOfflineButton(enroll, "동의하고 오프라인 시작", 170);
-                enroll.GetComponent<LayoutElement>().preferredWidth = 146;
-            }
-            if (cancelRegistration)
-            {
-                switchToOffline = AddOfflineButton(cancelRegistration, "오프라인으로 새로 시작", 182);
+                enrollOffline = AddOfflineButton(enroll, "동의하고 오프라인 시작", 237, cancelRegistration);
+                switchToOffline = AddOfflineButton(cancelRegistration, "오프라인으로 새로 시작", 226, enroll);
                 switchToOffline.transform.SetSiblingIndex(0);
-                switchToOffline.transform.parent.GetComponent<HorizontalLayoutGroup>().spacing = 12;
             }
             if (font && !useSceneFonts)
                 foreach (var text in GetComponentsInChildren<Text>(true)) text.font = font;
@@ -269,12 +264,17 @@ namespace BossTemplate
             if (retry) retry.gameObject.SetActive(visible);
         }
 
-        private Button AddOfflineButton(Button template, string title, float width)
+        private Button AddOfflineButton(Button template, string title, float width, Button style)
         {
             var button = Instantiate(template, template.transform.parent);
             button.name = title;
             button.transform.SetSiblingIndex(template.transform.GetSiblingIndex() + 1);
-            button.GetComponentInChildren<Text>(true).text = title;
+            var label = button.GetComponentInChildren<Text>(true);
+            var styleLabel = style.GetComponentInChildren<Text>(true);
+            label.text = title;
+            label.font = styleLabel.font;
+            label.color = styleLabel.color;
+            button.image.color = style.image.color;
             button.GetComponent<LayoutElement>().preferredWidth = width;
             Listen(button, session.EnrollOffline);
             return button;

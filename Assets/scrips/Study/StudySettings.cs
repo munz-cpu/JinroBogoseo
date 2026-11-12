@@ -17,7 +17,7 @@ namespace BossTemplate
         private const string DebriefContactNotice = "기록 제외를 원하면 참가자 ID와 함께 아래 문의처로 연락해 주세요.";
         [Header("서버와 연구 버전")]
         public string apiUrl = "http://127.0.0.1:8000";
-        public string settingsVersion = "combat-v11";
+        public string settingsVersion = "combat-v14";
         public string consentVersion = "consent-v6";
         [Header("동의와 사후 안내")]
         [TextArea(4, 10)] public string consentNotice =
@@ -42,8 +42,19 @@ namespace BossTemplate
         public bool stagedRollingMineThrow;
         [InspectorName("구르는 돌 추적 조준과 고속 투척")]
         public bool aimedRollingMineThrow;
+        [InspectorName("네 주먹의 구르는 돌 연속 투척")]
+        public bool overlappingRollingMineThrows;
+        [InspectorName("투척 시 플레이어 몸을 조준")]
+        public bool aimRollingMinesAtPlayer;
         [InspectorName("2페이즈 연속 내려찍기 가속")]
         public bool fasterFistSlams;
+        [InspectorName("네 주먹 연계 공격")]
+        public bool linkedFourHandPatterns;
+        [Min(1), InspectorName("2페이즈 추가 체력 배수")]
+        public float phaseTwoHealthMultiplier = 1;
+        [Tooltip("0이면 이전 전투 설정의 30% 미만 등장 조건을 사용합니다.")]
+        [Range(0, 1), InspectorName("추가 주먹 등장 체력 비율")]
+        public float fourHandHealthThreshold;
         [Range(0, 1)] public float minimumLevel = 0;
         [Range(0, 1)] public float maximumLevel = 1;
         [Tooltip("X는 낮은 난이도, Y는 높은 난이도의 보스 체력 배수입니다.")]

@@ -33,7 +33,9 @@ namespace BossTemplate
         private const float FistHeight = 4.2f;
         private const int OriginalFistCount = 2;
         private const int TotalFistCount = 4;
-        private const float EnrageHealthRatio = .30f;
+        private const float LegacyEnrageHealthRatio = .30f;
+        private const float DefaultEnrageHealthRatio = .50f;
+        private const float DefaultPhaseTwoHealthMultiplier = 4f / 3f;
         private const float EnrageRevealDuration = .55f;
         internal const int GiantSortingOrder = ArenaProjectile.PlantedBodySortingOrder - 1;
         private bool pauseRain;
@@ -65,7 +67,10 @@ namespace BossTemplate
         private bool enraged;
         private static readonly Color FistWarningColor = new Color(1, .52f, .23f);
         private static readonly Color FistReleaseColor = new Color(1, .86f, .53f);
-        internal float PhaseTwoMaximum => phaseTwoHealth * (arena.Study ? arena.Study.BossHealthFactor : 1);
+        internal float PhaseTwoMaximum => phaseTwoHealth * (arena.Study
+            ? arena.Study.BossHealthFactor * Mathf.Max(1, arena.Study.Protocol.phaseTwoHealthMultiplier)
+            : DefaultPhaseTwoHealthMultiplier);
+        private float EnrageHealthRatio => arena.Study ? arena.Study.Protocol.fourHandHealthThreshold : DefaultEnrageHealthRatio;
         public FighterHealth Health { get; private set; }
         public int Phase { get; private set; } = 1;
         public bool Transitioning { get; private set; }
@@ -333,7 +338,14 @@ namespace BossTemplate
                 if (giantBurrowing && !arena.Finished) return;
                 if (!arena.Finished && Time.deltaTime > 0)
                 {
-                    if (!enraged && Health.Current < Health.Maximum * EnrageHealthRatio) Enrage();
+                    if (!enraged)
+                    {
+                        float ratio = EnrageHealthRatio;
+                        bool ready = ratio > 0
+                            ? Health.Current <= Health.Maximum * ratio
+                            : Health.Current < Health.Maximum * LegacyEnrageHealthRatio;
+                        if (ready) Enrage();
+                    }
                     Vector3 position = transform.position;
                     position.x = Mathf.SmoothDamp(position.x, PlayerPosition.x, ref giantFollowVelocity, 1.25f, 2.2f);
                     transform.position = position;

@@ -246,13 +246,19 @@ internal static class BossStudyChecks
         Check(hands[0].sprite == fistArt && hands[1].sprite == fistArt,
             "Combat hands restore their normal rendering");
         var bossHealth = arena.Boss.Health;
-        arena.Player.Health.InvulnerableUntil = Time.time + 45;
-        bossHealth.Hit(bossHealth.Maximum * .69f);
+        arena.Player.Health.InvulnerableUntil = Time.time + 65;
+        float basePhaseTwoHealth = new SerializedObject(arena.Boss).FindProperty("phaseTwoHealth").floatValue;
+        float healthFactor = study.BossHealthFactor * Mathf.Max(1, study.Protocol.phaseTwoHealthMultiplier);
+        Check(Mathf.Approximately(bossHealth.Maximum, basePhaseTwoHealth * healthFactor),
+            "Phase two applies its own health multiplier in addition to the study difficulty");
+        float threshold = study.Protocol.fourHandHealthThreshold;
+        float thresholdHealth = bossHealth.Maximum * (threshold > 0 ? threshold : .30f);
+        bossHealth.Hit(bossHealth.Maximum - thresholdHealth - bossHealth.Maximum * .01f);
         yield return null;
         Check(hands[0].enabled && hands[1].enabled && !hands[2].enabled && !hands[3].enabled,
             "Phase two has two hands above the threshold");
-        bossHealth.Hit(bossHealth.Maximum * .02f);
-        yield return Until(() => hands[2].enabled && hands[3].enabled, "Two more hands spawn below 30 percent");
+        bossHealth.Hit(bossHealth.Current - thresholdHealth + (threshold > 0 ? 0 : bossHealth.Maximum * .01f));
+        yield return Until(() => hands[2].enabled && hands[3].enabled, "Two more hands spawn at the configured threshold");
         var playerPosition = arena.Player.transform.position;
         playerPosition.x = arena.GroundBounds.center.x;
         arena.Player.transform.position = playerPosition;
@@ -266,12 +272,28 @@ internal static class BossStudyChecks
             (BossPattern.fist_diagonal_rush, "엇갈린 대각선 돌진"),
             (BossPattern.fist_rising_columns, "네 손 상승 기둥")
         };
+        bool linkedAttacks = study.Protocol.linkedFourHandPatterns;
+        if (linkedAttacks)
+        {
+            var windups = (float[])typeof(ArenaBoss).GetField("fistWindupUntil", BindingFlags.Instance | BindingFlags.NonPublic)
+                .GetValue(arena.Boss);
+            yield return Until(() => arena.Boss.Intent == enrageAttacks[0].intent + " 예고",
+                "The linked cross slam starts with a warning");
+            var seenWindups = new HashSet<int>();
+            yield return Until(() =>
+            {
+                for (int i = 0; i < windups.Length; i++)
+                    if (windups[i] > Time.time) seenWindups.Add(i);
+                return seenWindups.Count == hands.Length;
+            }, "Every hand telegraphs a strike in the linked cross slam");
+        }
         foreach (var attack in enrageAttacks)
         {
             yield return Until(() => arena.Boss.Intent == attack.intent, $"Enrage attack {attack.pattern}");
             if (attack.pattern != BossPattern.fist_cross_slam || !study.Protocol.enhancedFourHandPatterns) continue;
-            yield return Until(() => study.InspectorState.active.pattern_stats[(int)attack.pattern].executions == 2,
-                "The first four-hand attack repeats and records both executions");
+            if (!linkedAttacks)
+                yield return Until(() => study.InspectorState.active.pattern_stats[(int)attack.pattern].executions == 2,
+                    "The legacy four-hand attack repeats and records both executions");
             ArenaProjectile rolling = null;
             yield return Until(() => (rolling = Array.Find(UnityEngine.Object.FindObjectsByType<ArenaProjectile>(),
                 projectile => projectile.IsRollingToFist)) != null, "The rolling feint spawns a catchable rock");
@@ -284,6 +306,13 @@ internal static class BossStudyChecks
                 Check(captured == rolling && Mathf.Abs(captured.transform.position.x - rollStartX) > 2,
                     "The first rock rolls through the arena before being caught");
                 float caughtAt = Time.time;
+                if (study.Protocol.overlappingRollingMineThrows)
+                {
+                    yield return Until(() => Array.Exists(UnityEngine.Object.FindObjectsByType<ArenaProjectile>(),
+                        projectile => projectile != captured && projectile.IsHeldByFist),
+                        "The next fist catches a rock during the first fist's windup");
+                    Check(captured.IsHeldByFist, "Two fists can hold rocks at the same time");
+                }
                 yield return Until(() => !captured.IsHeldByFist, "The fist winds up before releasing its mine");
                 Check(Time.time - caughtAt >= .65f, "The rock stays in the hand during the pullback and pause");
             }
@@ -308,9 +337,13 @@ internal static class BossStudyChecks
         Check(saved.recent[0].pattern_stats[(int)BossPattern.dash].average_damage == 6, "Measured pattern damage");
         Check(saved.recent[0].damage_dealt > 0 && saved.recent[0].boss_hp_remaining == 0, "Both boss phases recorded");
         Check(saved.recent[0].boss_phase == 2 && saved.recent[0].phase_progress_percent == 100, "Cleared phase progress");
-        foreach (var attack in enrageAttacks)
-            Check(saved.recent[0].pattern_stats[(int)attack.pattern].executions == 1,
-                $"Enrage attack {attack.pattern} is tracked independently");
+        for (int i = 0; i < enrageAttacks.Length; i++)
+        {
+            var attack = enrageAttacks[i].pattern;
+            int expected = !linkedAttacks && study.Protocol.enhancedFourHandPatterns && i + 1 < enrageAttacks.Length ? 2 : 1;
+            Check(saved.recent[0].pattern_stats[(int)attack].executions == expected,
+                $"Enrage attack {attack} is tracked independently");
+        }
         yield return Until(() => study.SyncStatus.Length > 0, "Offline attempt transmission");
         study.Protocol.apiUrl = Endpoint;
         yield return Until(() => !study.HasPending, "Automatic retry after connectivity returns");

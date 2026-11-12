@@ -10,6 +10,8 @@ namespace BossTemplate
     {
         private const float DetailsEntranceDuration = .28f;
         private const float DetailsExitDuration = .22f;
+        private const string WindowsDownloadUrl =
+            "https://drive.google.com/file/d/1viEs3rjWIQg2MKo2Z8hFBq1Ka6ZV3sKa/view?usp=sharing";
         private const string HowToPlay =
             "이동: WASD\n" +
             "점프: Space, W\n" +
@@ -59,6 +61,7 @@ namespace BossTemplate
             sceneryScale = scenery.transform.localScale;
             golemLayer.sortingOrder = ArenaBoss.GiantSortingOrder;
             navigationScale = navigation.localScale;
+            if (Application.platform == RuntimePlatform.WebGLPlayer) AddWindowsDownloadButton();
             navigationSlide = new StudySlideIn((RectTransform)transform, navigation);
             detailsScale = details.localScale;
             detailsAnchor = details.anchorMin;
@@ -76,6 +79,24 @@ namespace BossTemplate
             foreach (var button in new[] { play, howToPlay, settings, stats, terms, back, backToMenu })
                 StudyTextHover.Attach(button);
             BindVolumeRows();
+        }
+
+        private void AddWindowsDownloadButton()
+        {
+            const string label = "Windows 버전 다운로드";
+            var download = Instantiate(terms, navigation, false);
+            download.gameObject.name = label;
+            var text = download.GetComponentInChildren<Text>();
+            text.text = label;
+            text.fontSize = 25;
+
+            var downloadRect = (RectTransform)download.transform;
+            downloadRect.anchoredPosition += Vector2.down * 51;
+            StudyVolumeRow.SetNavigation(terms, stats, download);
+            StudyVolumeRow.SetNavigation(download, terms, play);
+            StudyVolumeRow.SetNavigation(play, download, howToPlay);
+            download.onClick.AddListener(() => Application.OpenURL(WindowsDownloadUrl));
+            StudyTextHover.Attach(download);
         }
 
         private void BindVolumeRows()

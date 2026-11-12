@@ -30,22 +30,24 @@ namespace BossTemplate
             {
                 applied_at = now, previous_level = last?.difficulty.level ?? level, new_level = level, reason = reason
             };
+            int patternCount = settings.enhancedFourHandPatterns ? Patterns.Length : (int)BossPattern.fist_rolling_mines;
             var profile = new DifficultySnapshot
             {
                 level = level,
                 boss_health = Mathf.Lerp(Mathf.Clamp(settings.bossHealth.x, .94f, 1.12f),
                     Mathf.Clamp(settings.bossHealth.y, .94f, 1.12f), level),
-                patterns = new PatternParameters[Patterns.Length]
+                patterns = new PatternParameters[patternCount]
             };
-            foreach (var pattern in Patterns)
+            for (int i = 0; i < patternCount; i++)
             {
+                BossPattern pattern = Patterns[i];
                 string id = pattern.ToString();
                 PatternRange range = Array.Find(settings.patternOverrides ?? Array.Empty<PatternRange>(),
                     item => item != null && item.patternId == id) ?? settings.defaultPattern ?? new PatternRange();
-                float vulnerability = Vulnerability(history, (int)pattern);
+                float vulnerability = Vulnerability(history, i);
                 // High damage per execution indicates a weak response. Give that pattern less weight on easier runs.
                 float selectionLevel = Mathf.Clamp01(level - (1 - level) * vulnerability * .35f);
-                profile.patterns[(int)pattern] = new PatternParameters
+                profile.patterns[i] = new PatternParameters
                 {
                     pattern_id = id,
                     selection_weight = Mathf.Clamp(Mathf.Lerp(range.selectionWeight.x, range.selectionWeight.y,

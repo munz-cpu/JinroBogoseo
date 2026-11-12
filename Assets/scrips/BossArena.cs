@@ -43,6 +43,7 @@ namespace BossTemplate
         [SerializeField, Range(0, 1), InspectorName("바닥에 박힐 확률")] private float rockPlantChance = .45f;
         [SerializeField, Min(.1f), InspectorName("폭발까지 걸리는 시간")] private float rockFuse = 4;
         [SerializeField, InspectorName("돌 폭발 효과음")] private AudioClip rockExplosionSound;
+        [SerializeField, InspectorName("돌 파괴 효과음")] private AudioClip rockBreakSound;
         [SerializeField, InspectorName("낙석 착지 효과음")] private AudioClip rockLandingSound;
         [SerializeField, Range(0, 2), InspectorName("충돌 화면 흔들림")] private float shakeStrength = 1;
         private Vector3 playerStart, bossStart;
@@ -309,7 +310,7 @@ namespace BossTemplate
         }
         internal void ShowRockBreak(Vector2 position, Vector2 size)
         {
-            PlayEffect(rockExplosionSound);
+            PlayEffect(rockBreakSound ? rockBreakSound : rockExplosionSound);
             Burst(rockDustMesh, position, size, new Color(.79f, .68f, .53f), .42f,
                 Vector2.up * .85f, 2.6f);
         }
@@ -404,7 +405,8 @@ namespace BossTemplate
             RockAppearance appearance = default;
             if (fallingRocks != null && fallingRocks.Length > 0)
                 appearance = fallingRocks[Random.Range(0, fallingRocks.Length)];
-            Sprite shell = flight is RockFlight.Falling or RockFlight.Mine ? appearance.shell : null;
+            Sprite shell = flight is RockFlight.Falling or RockFlight.Mine || pattern == BossPattern.fist_rolling_mines
+                ? appearance.shell : null;
             ArenaProjectile rock = SpawnProjectile(position, velocity, damage, true, appearance.solid ? appearance.solid : rockSprite,
                 shell, flight, true, holdTime, pattern);
             if (rock && healingMine) rock.MarkHealingMine();

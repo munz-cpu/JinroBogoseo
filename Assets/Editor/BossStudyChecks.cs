@@ -253,6 +253,9 @@ internal static class BossStudyChecks
             "Phase two has two hands above the threshold");
         bossHealth.Hit(bossHealth.Maximum * .02f);
         yield return Until(() => hands[2].enabled && hands[3].enabled, "Two more hands spawn below 30 percent");
+        var playerPosition = arena.Player.transform.position;
+        playerPosition.x = arena.GroundBounds.center.x;
+        arena.Player.transform.position = playerPosition;
         var enrageAttacks = new (BossPattern pattern, string intent)[]
         {
             (BossPattern.fist_cross_slam, "네 손 교차 내려찍기"),
@@ -264,7 +267,28 @@ internal static class BossStudyChecks
             (BossPattern.fist_rising_columns, "네 손 상승 기둥")
         };
         foreach (var attack in enrageAttacks)
+        {
             yield return Until(() => arena.Boss.Intent == attack.intent, $"Enrage attack {attack.pattern}");
+            if (attack.pattern != BossPattern.fist_cross_slam || !study.Protocol.enhancedFourHandPatterns) continue;
+            yield return Until(() => study.InspectorState.active.pattern_stats[(int)attack.pattern].executions == 2,
+                "The first four-hand attack repeats and records both executions");
+            ArenaProjectile rolling = null;
+            yield return Until(() => (rolling = Array.Find(UnityEngine.Object.FindObjectsByType<ArenaProjectile>(),
+                projectile => projectile.IsRollingToFist)) != null, "The rolling feint spawns a catchable rock");
+            float rollStartX = rolling.transform.position.x;
+            ArenaProjectile captured = null;
+            yield return Until(() => (captured = Array.Find(UnityEngine.Object.FindObjectsByType<ArenaProjectile>(),
+                projectile => projectile.IsHeldByFist)) != null, "A fist captures a rolling rock");
+            if (study.Protocol.stagedRollingMineThrow)
+            {
+                Check(captured == rolling && Mathf.Abs(captured.transform.position.x - rollStartX) > 2,
+                    "The first rock rolls through the arena before being caught");
+                float caughtAt = Time.time;
+                yield return Until(() => !captured.IsHeldByFist, "The fist winds up before releasing its mine");
+                Check(Time.time - caughtAt >= .65f, "The rock stays in the hand during the pullback and pause");
+            }
+            yield return Until(() => captured.Planted, "The same captured rock is thrown and plants as a mine");
+        }
         arena.SkipCurrentPhase();
         Check(arena.CombatEnded && !arena.ResultsReady && study.Screen == StudyScreen.Combat,
             "A lethal blow stops combat before displaying the result");
@@ -507,7 +531,7 @@ internal static class BossStudyChecks
         var protocol = AssetDatabase.LoadAssetAtPath<StudySettings>(SettingsPath).protocol;
         var history = new List<AttemptRecord>();
         const string now = "2026-01-01T00:00:00Z";
-        var profiles = new StudyProtocol();
+        var profiles = new StudyProtocol { enhancedFourHandPatterns = true };
         foreach (int target in new[] { 3, 7, 12, 20 })
         {
             var first = AdaptiveDifficulty.Choose(profiles, history, 1, target, now, out _);
@@ -538,8 +562,11 @@ internal static class BossStudyChecks
         Array.Resize(ref history[0].pattern_stats, (int)BossPattern.fist_jab);
         var upgraded = AdaptiveDifficulty.Choose(profiles, history, 12, 12, now, out _);
         Check(upgraded.patterns.Length == AdaptiveDifficulty.Patterns.Length
-            && upgraded.patterns[(int)BossPattern.fist_double_slam].pattern_id == nameof(BossPattern.fist_double_slam),
+            && upgraded.ParametersFor(BossPattern.fist_rolling_mines).pattern_id == nameof(BossPattern.fist_rolling_mines),
             "Older attempt records must work with the expanded pattern list");
+        var legacy = AdaptiveDifficulty.Choose(new StudyProtocol(), history, 12, 12, now, out _);
+        Check(legacy.patterns.Length == (int)BossPattern.fist_rolling_mines,
+            "Saved legacy protocols retain their original pattern list");
         Check(upgraded.level == baseline.level && upgraded.patterns[0].selection_weight < baseline.patterns[0].selection_weight,
             "Past damage must still affect pattern weights without moving the base curve");
         var fixedFirst = AdaptiveDifficulty.Choose(profiles, Array.Empty<AttemptRecord>(), 1, 12, now, out _, fixedHard: true);

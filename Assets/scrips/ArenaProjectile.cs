@@ -2,7 +2,7 @@ using UnityEngine;
 
 namespace BossTemplate
 {
-    internal enum RockFlight { Straight, Falling, Skipping, Launch, Crashing, Burst, Mine, Rolling, AirHockey }
+    internal enum RockFlight { Straight, Falling, Skipping, Launch, Crashing, Burst, Mine, Rolling, AirHockey, HeldByFist }
 
     public sealed class ArenaProjectile : MonoBehaviour
     {
@@ -29,11 +29,12 @@ namespace BossTemplate
         private Vector2 velocity;
         private float damage, radius, launchAt, expires, fuse;
         private float rockGroundOffset;
+        private float? fistCatchX;
         private bool hostile;
         private bool isRock;
         private bool planted;
         private bool healingMine;
-        private bool mineTouchedPlayer;
+        private bool touchedPlayer, rollThroughContact;
         private Color normalColor;
         private float hitFlashUntil;
         private RockFlight flight;
@@ -43,6 +44,8 @@ namespace BossTemplate
         private AudioClip hockeyBounceSound;
         internal bool Planted => gameObject.activeSelf && planted;
         internal bool IsAirHockeyPuck => gameObject.activeSelf && flight == RockFlight.AirHockey;
+        internal bool IsRollingToFist => gameObject.activeSelf && flight == RockFlight.Rolling && fistCatchX.HasValue;
+        internal bool IsHeldByFist => gameObject.activeSelf && flight == RockFlight.HeldByFist;
 
         internal void Initialize(BossArena owner, Vector2 speed, float amount, bool enemy,
             Sprite sprite, Sprite shell, RockFlight mode, bool rock, float holdTime, BossPattern? sourcePattern)
@@ -63,6 +66,7 @@ namespace BossTemplate
             hostile = enemy;
             isRock = rock;
             flight = mode;
+            fistCatchX = null;
             radius = enemy ? .65f * hitboxFactor : owner.Boss.ProjectileHitRadius;
             launchAt = Time.time + holdTime;
             expires = launchAt + (mode switch
@@ -74,7 +78,7 @@ namespace BossTemplate
             }) / motionSpeed;
             planted = false;
             healingMine = false;
-            mineTouchedPlayer = false;
+            touchedPlayer = rollThroughContact = false;
             rockHits = !rock ? 0 : mode is RockFlight.Falling or RockFlight.Skipping or RockFlight.Mine ? 5 : 3;
             hitFlashUntil = 0;
             transform.localScale = sprite && !enemy ? Vector3.one * 1.65f : sprite ? Vector3.one * RockSizeMultiplier * (mode switch
@@ -99,6 +103,20 @@ namespace BossTemplate
                 rockShell.color = Color.white;
                 rockShell.enabled = false;
             }
+        }
+
+        internal void CatchAt(float x, bool rollThroughContact)
+        {
+            fistCatchX = x;
+            this.rollThroughContact = rollThroughContact;
+        }
+
+        internal void ThrowHeldMine(Vector2 speed, float amount)
+        {
+            if (!IsHeldByFist) return;
+            int remainingHits = rockHits;
+            Initialize(arena, speed, amount, true, surface.sprite, shellSprite, RockFlight.Mine, true, 0, pattern);
+            rockHits = Mathf.Min(rockHits, remainingHits);
         }
 
         internal void LaunchAirHockey(float duration, AudioClip bounceSound)
@@ -143,6 +161,7 @@ namespace BossTemplate
         {
             if (arena.Frozen) return;
             if (arena.Finished) { gameObject.SetActive(false); return; }
+            if (flight == RockFlight.HeldByFist) return;
             if (Time.time < launchAt) return;
             if (Planted)
             {
@@ -180,6 +199,12 @@ namespace BossTemplate
             if (flight == RockFlight.Skipping) velocity.y -= RockGravity * step;
             else if (flight == RockFlight.Mine) velocity.y -= MineGravity * step;
             Vector2 to = from + velocity * step;
+            bool caught = false;
+            if (IsRollingToFist && fistCatchX is float catchX && (velocity.x > 0 ? to.x >= catchX : to.x <= catchX))
+            {
+                to.x = catchX;
+                caught = true;
+            }
             float floor = arena.GroundY + rockGroundOffset;
             bool reachedFloor = (flight is RockFlight.Falling or RockFlight.Skipping or RockFlight.Crashing or RockFlight.Mine)
                 && velocity.y < 0 && to.y <= floor;
@@ -218,6 +243,7 @@ namespace BossTemplate
             transform.position = to;
             if (flight == RockFlight.Rolling)
                 transform.Rotate(0, 0, -velocity.x * step * 105);
+            if (caught) flight = RockFlight.HeldByFist;
             if ((flight is RockFlight.Skipping or RockFlight.Rolling) &&
                 (to.x < arena.GroundBounds.min.x || to.x > arena.GroundBounds.max.x))
                 gameObject.SetActive(false);
@@ -308,7 +334,8 @@ namespace BossTemplate
 
         private bool ResolveHit(Vector2 from, Vector2 to)
         {
-            if (flight == RockFlight.Mine && mineTouchedPlayer) return false;
+            bool staysAfterHit = flight == RockFlight.Mine || rollThroughContact;
+            if (staysAfterHit && touchedPlayer) return false;
 
             FighterHealth target = hostile ? arena.Player.Health : arena.Boss.Health;
             Vector2 targetPosition = target.transform.position;
@@ -327,7 +354,7 @@ namespace BossTemplate
                 else if (!hostile && !arena.Boss.CanBeHit) targetTime = float.PositiveInfinity;
                 else targetTime = ContactTime(from, to, targetPosition, radius);
             }
-            if (!(flight is RockFlight.AirHockey or RockFlight.Mine))
+            if (flight != RockFlight.AirHockey && !staysAfterHit)
             {
                 ArenaProjectile rock = arena.FirstRockOnPath(from, to, hostile, flight == RockFlight.Skipping, out float rockTime);
                 if (rock && rockTime <= targetTime)
@@ -358,9 +385,9 @@ namespace BossTemplate
                 Vector2 impact = Vector2.Lerp(from, to, targetTime);
                 if (hit) arena.ShakeImpact(impact, velocity.normalized * .13f);
                 if (flight == RockFlight.AirHockey) return false;
-                if (flight == RockFlight.Mine)
+                if (staysAfterHit)
                 {
-                    mineTouchedPlayer = true;
+                    touchedPlayer = true;
                     return false;
                 }
                 if (isRock) arena.ShowRockBreak(impact, surface.bounds.size);

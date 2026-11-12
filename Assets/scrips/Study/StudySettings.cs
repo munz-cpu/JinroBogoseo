@@ -16,7 +16,7 @@ namespace BossTemplate
         private const string DebriefContactNotice = "기록 제외를 원하면 참가자 ID와 함께 아래 문의처로 연락해 주세요.";
         [Header("서버와 연구 버전")]
         public string apiUrl = "http://127.0.0.1:8000";
-        public string settingsVersion = "combat-v8";
+        public string settingsVersion = "combat-v10";
         public string consentVersion = "consent-v6";
         [Header("동의와 사후 안내")]
         [TextArea(4, 10)] public string consentNotice =
@@ -35,6 +35,10 @@ namespace BossTemplate
         [Header("연구 난이도와 전투 배수")]
         [InspectorName("2페이즈 장거리 잠복 이동")]
         public bool phaseTwoBurrow;
+        [InspectorName("2페이즈 네 주먹 강화 패턴")]
+        public bool enhancedFourHandPatterns;
+        [InspectorName("구르는 돌 잡기와 투척 예고 강화")]
+        public bool stagedRollingMineThrow;
         [Range(0, 1)] public float minimumLevel = 0;
         [Range(0, 1)] public float maximumLevel = 1;
         [Tooltip("X는 낮은 난이도, Y는 높은 난이도의 보스 체력 배수입니다.")]

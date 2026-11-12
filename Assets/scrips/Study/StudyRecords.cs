@@ -9,7 +9,7 @@ namespace BossTemplate
         skipping_rocks, teleport_slam, rock_rain, fist_slams, air_hockey, fist_sweep, throw_mines, rolling_rocks,
         fist_jab, fist_uppercut, fist_backhand, fist_clap, fist_double_slam,
         fist_cross_slam, fist_pincer_combo, fist_slam_chain, fist_floor_wave, fist_high_clap,
-        fist_diagonal_rush, fist_rising_columns
+        fist_diagonal_rush, fist_rising_columns, fist_rolling_mines
     }
 
     [Serializable] internal sealed class ParticipantRecord

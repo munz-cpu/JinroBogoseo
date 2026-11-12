@@ -11049,6 +11049,7 @@ MonoBehaviour:
   rockPlantChance: 0.45
   rockFuse: 4
   rockExplosionSound: {fileID: 8300000, guid: 89ef9751a5f64b842becfe7b43ad615c, type: 3}
+  rockBreakSound: {fileID: 8300000, guid: 1d498ccf07f1e3540a516deb990964aa, type: 3}
   rockLandingSound: {fileID: 8300000, guid: 14edfccfb19d2864c93959aed31719c5, type: 3}
   shakeStrength: 1
   rockDustMesh: {fileID: 4300000, guid: b8e78bc7411a79545a49b4476d5207a8, type: 2}

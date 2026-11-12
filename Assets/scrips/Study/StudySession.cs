@@ -41,6 +41,8 @@ namespace BossTemplate
         private StudySave state;
         private readonly List<ArchiveUpload> archiveUploads = new List<ArchiveUpload>();
         private StudyPanel panel;
+        private StudyLoadingScreen loadingScreen;
+        private AsyncOperation sceneLoad;
         private float startTime, checkpointAt, nextSend;
         private float pausedAt, previousTimeScale;
         private bool previousAudioPause;
@@ -101,6 +103,8 @@ namespace BossTemplate
             arena = owner;
             panel = scenePanel;
             panel.Bind(this, settings.font);
+            loadingScreen?.Hide();
+            sceneLoad = null;
             changingScene = false;
             if (arena) arena.AttachStudy(this);
             if (storage != null)
@@ -757,15 +761,54 @@ namespace BossTemplate
             string sceneName = Path.GetFileNameWithoutExtension(path);
             if (!Application.CanStreamedLevelBeLoaded(sceneName))
             {
-                Debug.LogError("Study scene is missing from Build Settings: " + path);
-                fatal = true;
-                ReleaseVictory();
-                Screen = StudyScreen.Error;
-                panel.Render(Screen);
+                FailSceneLoad("Study scene is missing from Build Settings: " + path);
                 return;
             }
             changingScene = true;
-            SceneManager.LoadSceneAsync(sceneName, LoadSceneMode.Single);
+            loadingScreen ??= new StudyLoadingScreen(asset.font);
+            loadingScreen.Show();
+            StartCoroutine(LoadSceneWithProgress(sceneName));
+        }
+
+        private IEnumerator LoadSceneWithProgress(string sceneName)
+        {
+            // Give the current frame a chance to render the overlay before scene loading starts.
+            yield return null;
+            AsyncOperation operation = null;
+            try { operation = SceneManager.LoadSceneAsync(sceneName, LoadSceneMode.Single); }
+            catch (Exception error) when (error is ArgumentException or UnityException)
+            {
+                Debug.LogException(error);
+            }
+            if (operation == null)
+            {
+                FailSceneLoad("Could not start loading study scene: " + sceneName);
+                yield break;
+            }
+
+            sceneLoad = operation;
+            while (sceneLoad == operation && !operation.isDone)
+            {
+                loadingScreen.SetProgress(operation.progress);
+                yield return null;
+            }
+
+            // EnterScene clears the overlay before the new screen or combat starts.
+            yield return null;
+            if (sceneLoad == operation)
+                FailSceneLoad("Study scene did not initialize: " + sceneName);
+        }
+
+        private void FailSceneLoad(string message)
+        {
+            Debug.LogError(message);
+            loadingScreen?.Hide();
+            sceneLoad = null;
+            changingScene = false;
+            fatal = true;
+            ReleaseVictory();
+            Screen = StudyScreen.Error;
+            if (panel) panel.Render(Screen);
         }
 
         private void OnApplicationPause(bool paused)
@@ -789,6 +832,7 @@ namespace BossTemplate
 
         private void OnDestroy()
         {
+            loadingScreen?.Destroy();
             Resume();
             ReleaseVictory();
             if (Current == this) Current = null;

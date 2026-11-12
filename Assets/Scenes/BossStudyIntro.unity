@@ -6521,6 +6521,7 @@ MonoBehaviour:
   volumeLabel: {fileID: 558007604}
   scroll: {fileID: 1358022141}
   volume: {fileID: 1759470271}
+  settingsOpenSound: {fileID: 8300000, guid: b02ab142669fe1947a93ac7e72365ba4, type: 3}
 --- !u!224 &1575503110
 RectTransform:
   m_ObjectHideFlags: 0

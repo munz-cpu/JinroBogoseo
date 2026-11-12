@@ -29,8 +29,10 @@ namespace BossTemplate
         [SerializeField] private Text playLabel, heading, body, volumeLabel;
         [SerializeField] private ScrollRect scroll;
         [SerializeField] private Slider volume;
+        [SerializeField] private AudioClip settingsOpenSound;
 
         private StudySession session;
+        private AudioSource menuAudio;
         private Vector3[] layerOrigins;
         private Vector3 sceneryScale, navigationScale, detailsScale, golemOrigin;
         private Vector2 detailsAnchor, detailsPosition, viewport;
@@ -59,6 +61,12 @@ namespace BossTemplate
             detailsGroup = details.gameObject.AddComponent<CanvasGroup>();
             details.GetComponent<Image>().raycastTarget = true;
             detailsBackdrop = CreateDetailsBackdrop();
+            if (settingsOpenSound)
+            {
+                menuAudio = gameObject.AddComponent<AudioSource>();
+                menuAudio.playOnAwake = false;
+                menuAudio.spatialBlend = 0;
+            }
             play.onClick.AddListener(session.OpenIntro);
             settings.onClick.AddListener(() => OpenDetails("설정", "", true));
             stats.onClick.AddListener(() => OpenDetails("통계", Stats()));
@@ -199,6 +207,8 @@ namespace BossTemplate
             if (settings)
             {
                 foreach (var row in volumeRows) row.Refresh();
+                if (menuAudio)
+                    menuAudio.PlayOneShot(settingsOpenSound, StudyAudioVolume.Get(StudyAudioChannel.Effects));
             }
             else
             {

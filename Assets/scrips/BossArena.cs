@@ -37,6 +37,7 @@ namespace BossTemplate
         [SerializeField, InspectorName("낙석 먼지 메시")] private Mesh rockDustMesh;
         [SerializeField, InspectorName("회복 구슬")] private ArenaHealthOrb healthOrb;
         [SerializeField, InspectorName("전투 효과음 소스")] private AudioSource effectsAudio;
+        private float effectsVolume;
         [Header("낙석")]
         [SerializeField, InspectorName("돌 스프라이트")] private Sprite rockSprite;
         [SerializeField, InspectorName("돌 외형 세트")] private RockAppearance[] fallingRocks;
@@ -147,6 +148,7 @@ namespace BossTemplate
         }
         private void Awake()
         {
+            if (effectsAudio) effectsVolume = effectsAudio.volume;
             if (arenaCamera) cameraBrain = arenaCamera.GetComponent<CinemachineBrain>();
             playerStart = player.transform.position; bossStart = boss.transform.position;
             Player.Initialize(this); Boss.Initialize(this);
@@ -155,6 +157,19 @@ namespace BossTemplate
             Boss.Health.InitializeAudio(this);
             healthOrb.Initialize(this);
             ResetFight();
+        }
+
+        private void OnEnable()
+        {
+            StudyAudioVolume.ChannelsChanged += ApplyEffectsVolume;
+            ApplyEffectsVolume();
+        }
+
+        private void OnDisable() => StudyAudioVolume.ChannelsChanged -= ApplyEffectsVolume;
+
+        private void ApplyEffectsVolume()
+        {
+            if (effectsAudio) effectsAudio.volume = effectsVolume * StudyAudioVolume.Get(StudyAudioChannel.Effects);
         }
 
         internal void AttachStudy(StudySession study)

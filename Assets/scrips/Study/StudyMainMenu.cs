@@ -42,6 +42,7 @@ namespace BossTemplate
         private float detailsFrom, detailsTarget, detailsDuration;
         private bool showingSettings;
         private GameObject previousSelection;
+        private StudyVolumeRow[] volumeRows;
 
         internal void Bind(StudySession owner)
         {
@@ -66,11 +67,33 @@ namespace BossTemplate
             backToMenu.onClick.AddListener(session.BackToTitle);
             foreach (var button in new[] { play, settings, stats, terms, back, backToMenu })
                 StudyTextHover.Attach(button);
-            volume.onValueChanged.AddListener(value =>
+            BindVolumeRows();
+        }
+
+        private void BindVolumeRows()
+        {
+            volumeLabel.rectTransform.anchoredPosition += Vector2.up * 24;
+            ((RectTransform)volume.transform).anchoredPosition += Vector2.up * 24;
+            volumeRows = new[]
             {
-                AudioListener.volume = value;
-                UpdateVolumeLabel(value);
-            });
+                new StudyVolumeRow(volumeLabel, volume, "전체 음량", StudyAudioChannel.Master),
+                CopyVolumeRow("BGM", StudyAudioChannel.Music, 72),
+                CopyVolumeRow("효과음", StudyAudioChannel.Effects, 144)
+            };
+            StudyVolumeRow.SetNavigation(back, volumeRows[2].Slider, volumeRows[0].Slider);
+            StudyVolumeRow.SetNavigation(volumeRows[0].Slider, back, volumeRows[1].Slider);
+            StudyVolumeRow.SetNavigation(volumeRows[1].Slider, volumeRows[0].Slider, volumeRows[2].Slider);
+            StudyVolumeRow.SetNavigation(volumeRows[2].Slider, volumeRows[1].Slider, back);
+        }
+
+        private StudyVolumeRow CopyVolumeRow(string title, StudyAudioChannel channel, float offset)
+        {
+            var label = Instantiate(volumeLabel, volumeLabel.transform.parent, false);
+            var slider = Instantiate(volume, volume.transform.parent, false);
+            label.gameObject.name = title;
+            label.rectTransform.anchoredPosition += Vector2.down * offset;
+            ((RectTransform)slider.transform).anchoredPosition += Vector2.down * offset;
+            return new StudyVolumeRow(label, slider, title, channel);
         }
 
         internal void Show()
@@ -143,7 +166,7 @@ namespace BossTemplate
 
         private void FinishCloseDetails()
         {
-            if (showingSettings) StudyPauseMenu.SaveVolume(volume.value);
+            if (showingSettings) PlayerPrefs.Save();
             details.gameObject.SetActive(false);
             detailsBackdrop.SetActive(false);
             detailsTransitionStart = float.NegativeInfinity;
@@ -155,8 +178,8 @@ namespace BossTemplate
 
         private void OnDestroy()
         {
-            if (showingSettings && volume && details && details.gameObject.activeSelf)
-                StudyPauseMenu.SaveVolume(volume.value);
+            if (showingSettings && details && details.gameObject.activeSelf)
+                PlayerPrefs.Save();
         }
 
         private void OpenDetails(string title, string text, bool settings = false)
@@ -167,8 +190,7 @@ namespace BossTemplate
             heading.text = title;
             navigation.gameObject.SetActive(false);
             scroll.gameObject.SetActive(!settings);
-            volume.gameObject.SetActive(settings);
-            volumeLabel.gameObject.SetActive(settings);
+            foreach (var row in volumeRows) row.SetVisible(settings);
             SetDetailsPose(0);
             detailsGroup.interactable = false;
             StartDetailsTransition(1, DetailsEntranceDuration);
@@ -176,8 +198,7 @@ namespace BossTemplate
             details.gameObject.SetActive(true);
             if (settings)
             {
-                volume.SetValueWithoutNotify(AudioListener.volume);
-                UpdateVolumeLabel(volume.value);
+                foreach (var row in volumeRows) row.Refresh();
             }
             else
             {
@@ -234,8 +255,6 @@ namespace BossTemplate
             details.anchoredPosition = detailsPosition + Vector2.down * (36 * (1 - amount));
             detailsGroup.alpha = amount;
         }
-
-        private void UpdateVolumeLabel(float value) => volumeLabel.text = $"전체 음량   {Mathf.RoundToInt(value * 100)}%";
 
         private string Stats()
         {

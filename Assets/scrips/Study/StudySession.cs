@@ -89,7 +89,7 @@ namespace BossTemplate
         internal void Activate()
         {
             Current = this;
-            StudyPauseMenu.LoadVolume();
+            StudyAudioVolume.LoadMaster();
             DontDestroyOnLoad(gameObject);
             gameObject.SetActive(true);
         }

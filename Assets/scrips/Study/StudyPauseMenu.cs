@@ -6,7 +6,6 @@ namespace BossTemplate
 {
     internal sealed class StudyPauseMenu
     {
-        private const string VolumeKey = "boss-study-master-volume";
         private static readonly Color Scrim = new Color32(17, 23, 20, 211);
         private static readonly Color Surface = new Color32(50, 66, 58, 255);
         private static readonly Color Ink = new Color32(245, 240, 232, 255);
@@ -14,21 +13,11 @@ namespace BossTemplate
         private static readonly Color Accent = new Color32(250, 201, 150, 255);
         private readonly RectTransform overlay, content;
         private readonly Font displayFont;
-        private readonly Text deaths, volumeLabel;
+        private readonly Text deaths;
         private readonly Button resume;
-        private readonly Slider volume;
+        private readonly StudyVolumeRow masterVolume, musicVolume, effectsVolume;
         private readonly StudySlideIn slide;
         private GameObject previousSelection;
-
-        internal static void LoadVolume() =>
-            AudioListener.volume = Mathf.Clamp01(PlayerPrefs.GetFloat(VolumeKey, 1));
-
-        internal static void SaveVolume(float value)
-        {
-            if (PlayerPrefs.GetFloat(VolumeKey, 1) == value) return;
-            PlayerPrefs.SetFloat(VolumeKey, value);
-            PlayerPrefs.Save();
-        }
 
         internal StudyPauseMenu(RectTransform parent, Font displayFont, Font bodyFont, StudySession session)
         {
@@ -37,29 +26,31 @@ namespace BossTemplate
             overlay.anchorMin = Vector2.zero;
             overlay.anchorMax = Vector2.one;
             overlay.gameObject.AddComponent<Image>().color = Scrim;
-            content = Rect(overlay, "일시정지 항목", Vector2.zero, new Vector2(332, 384));
+            content = Rect(overlay, "일시정지 항목", Vector2.zero, new Vector2(332, 480));
             content.anchorMin = content.anchorMax = new Vector2(.085f, .5f);
             content.pivot = new Vector2(0, .5f);
 
-            Label(content, "일시정지", displayFont, 62, 144, Ink);
-            var rule = Rect(content, "제목 밑줄", new Vector2(-138, 95), new Vector2(56, 3));
+            Label(content, "일시정지", displayFont, 62, 186, Ink);
+            var rule = Rect(content, "제목 밑줄", new Vector2(-138, 137), new Vector2(56, 3));
             var ruleImage = rule.gameObject.AddComponent<Image>();
             ruleImage.color = Accent;
             ruleImage.raycastTarget = false;
 
-            resume = CreateButton("게임으로 돌아가기", 43, 29, Ink);
+            resume = CreateButton("게임으로 돌아가기", 85, 29, Ink);
             resume.onClick.AddListener(session.TogglePause);
-            var menu = CreateButton("메뉴로 돌아가기", -8, 23, Muted);
+            var menu = CreateButton("메뉴로 돌아가기", 34, 23, Muted);
             menu.onClick.AddListener(session.ReturnToMenu);
 
-            volumeLabel = Label(content, "음량", bodyFont, 18, -91, Ink);
-            volume = CreateVolumeSlider(content, new Vector2(0, -120), Surface, Accent);
-            volume.onValueChanged.AddListener(SetVolume);
-            deaths = Label(content, "죽은 횟수", bodyFont, 18, -169, Muted);
+            masterVolume = CreateVolumeRow(bodyFont, "전체 음량", StudyAudioChannel.Master, -30);
+            musicVolume = CreateVolumeRow(bodyFont, "BGM", StudyAudioChannel.Music, -94);
+            effectsVolume = CreateVolumeRow(bodyFont, "효과음", StudyAudioChannel.Effects, -158);
+            deaths = Label(content, "죽은 횟수", bodyFont, 18, -225, Muted);
 
-            SetNavigation(resume, volume, menu);
-            SetNavigation(menu, resume, volume);
-            SetNavigation(volume, menu, resume);
+            StudyVolumeRow.SetNavigation(resume, effectsVolume.Slider, menu);
+            StudyVolumeRow.SetNavigation(menu, resume, masterVolume.Slider);
+            StudyVolumeRow.SetNavigation(masterVolume.Slider, menu, musicVolume.Slider);
+            StudyVolumeRow.SetNavigation(musicVolume.Slider, masterVolume.Slider, effectsVolume.Slider);
+            StudyVolumeRow.SetNavigation(effectsVolume.Slider, musicVolume.Slider, resume);
             slide = new StudySlideIn(overlay, content, playbackSpeed: StudySlideIn.FastPlayback);
             StudyTextHover.Attach(resume);
             StudyTextHover.Attach(menu);
@@ -69,10 +60,11 @@ namespace BossTemplate
         internal void Open(int count)
         {
             var available = ((RectTransform)overlay.parent).rect;
-            content.localScale = Vector3.one * Mathf.Min(1, available.width / 480, available.height / 440);
+            content.localScale = Vector3.one * Mathf.Min(1, available.width / 480, available.height / 540);
             deaths.text = $"죽은 횟수  {count}회";
-            volume.SetValueWithoutNotify(AudioListener.volume);
-            SetVolume(AudioListener.volume);
+            masterVolume.Refresh();
+            musicVolume.Refresh();
+            effectsVolume.Refresh();
             overlay.SetAsLastSibling();
             var events = EventSystem.current;
             previousSelection = events ? events.currentSelectedGameObject : null;
@@ -86,7 +78,7 @@ namespace BossTemplate
 
         internal void Close()
         {
-            SaveVolume(volume.value);
+            PlayerPrefs.Save();
             overlay.gameObject.SetActive(false);
             slide.Finish();
             var events = EventSystem.current;
@@ -94,10 +86,11 @@ namespace BossTemplate
                 events.SetSelectedGameObject(previousSelection && previousSelection.activeInHierarchy ? previousSelection : null);
         }
 
-        private void SetVolume(float value)
+        private StudyVolumeRow CreateVolumeRow(Font font, string title, StudyAudioChannel channel, float y)
         {
-            AudioListener.volume = value;
-            volumeLabel.text = $"음량  {Mathf.RoundToInt(value * 100)}%";
+            var label = Label(content, title, font, 18, y, Ink);
+            var slider = CreateVolumeSlider(content, new Vector2(0, y - 28), Surface, Accent);
+            return new StudyVolumeRow(label, slider, title, channel);
         }
 
         private static Slider CreateVolumeSlider(RectTransform parent, Vector2 position, Color surface, Color accent)
@@ -124,7 +117,6 @@ namespace BossTemplate
             slider.fillRect = fill;
             slider.handleRect = handle;
             slider.targetGraphic = handleImage;
-            slider.SetValueWithoutNotify(AudioListener.volume);
             return slider;
         }
 
@@ -142,12 +134,6 @@ namespace BossTemplate
             button.colors = colors;
             return button;
         }
-
-        private static void SetNavigation(Selectable control, Selectable above, Selectable below) =>
-            control.navigation = new Navigation
-            {
-                mode = Navigation.Mode.Explicit, selectOnUp = above, selectOnDown = below
-            };
 
         private static Text Label(RectTransform parent, string title, Font font, int size, float y, Color color)
         {

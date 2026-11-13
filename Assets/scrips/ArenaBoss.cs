@@ -312,7 +312,7 @@ namespace BossTemplate
 
         internal void HitFist(int index, float damage)
         {
-            if (Health.Hit(damage, flash: false)) fistFlashUntil[index] = Time.time + .1f;
+            if (Health.Hit(damage, flash: false)) fistFlashUntil[index] = Time.time + FighterHealth.HitFlashDuration;
         }
 
         private void Face(float horizontal)
@@ -379,8 +379,8 @@ namespace BossTemplate
                     Color color = windupRemaining > 0
                         ? Color.Lerp(FistReleaseColor, FistWarningColor, windupRemaining / .22f)
                         : reinforcement ? FistReleaseColor : Color.white;
-                    if (Time.time < fistFlashUntil[i])
-                        color = Color.Lerp(color, ArenaProjectile.HitFlashColor, windupRemaining > 0 ? .4f : 1f);
+                    float hitFlash = Mathf.Clamp01((fistFlashUntil[i] - Time.time) / FighterHealth.HitFlashDuration);
+                    color = Color.Lerp(color, ArenaProjectile.HitFlashColor, hitFlash * (windupRemaining > 0 ? .4f : 1f));
                     fist.color = color;
                 }
                 return;

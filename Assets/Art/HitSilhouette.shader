@@ -3,6 +3,7 @@ Shader "BossTemplate/Hit Silhouette"
     Properties
     {
         [PerRendererData] _MainTex ("Sprite Texture", 2D) = "white" {}
+        [PerRendererData] _FlashOpacity ("Flash Opacity", Range(0, 1)) = 1
     }
     SubShader
     {
@@ -20,6 +21,7 @@ Shader "BossTemplate/Hit Silhouette"
 
             TEXTURE2D(_MainTex);
             SAMPLER(sampler_MainTex);
+            half _FlashOpacity;
 
             struct Attributes
             {
@@ -45,7 +47,7 @@ Shader "BossTemplate/Hit Silhouette"
             half4 Fragment(Varyings input) : SV_Target
             {
                 half alpha = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, input.uv).a;
-                return half4(1, 1, 1, alpha);
+                return half4(1, 1, 1, alpha * _FlashOpacity);
             }
             ENDHLSL
         }

@@ -237,7 +237,9 @@ namespace BossTemplate
                 if (arena.Finished) yield break;
                 var impact = new Vector2(x, arena.GroundY);
                 arena.ShowRockLandingDust(impact, fist.bounds.size.x, playSound: false);
-                arena.ShakeImpact(impact, Vector2.down * .34f);
+                if (arena.EnhancedPhaseTwoEffects)
+                    arena.ShowPhaseTwoImpact(impact, Vector2.down, fist.bounds.size.x, .36f, groundImpact: true);
+                else arena.ShakeImpact(impact, Vector2.down * .34f);
                 arena.PlayEffect(fistSlamSound);
                 Coroutine recovery = StartCoroutine(ReturnFist(index, faster ? .32f : .55f));
                 if (nextWindup != null) yield return nextWindup;
@@ -312,6 +314,8 @@ namespace BossTemplate
                 Intent = "돌 에어하키";
                 hockeyStrikeTimes[0] = hockeyStrikeTimes[1] = float.NegativeInfinity;
                 puck.LaunchAirHockey(duration, fistImpactSound);
+                if (arena.EnhancedPhaseTwoEffects)
+                    arena.ShowPhaseTwoImpact(puck.transform.position, Vector2.right, 1.15f, .17f);
                 while (!arena.Finished && puck.IsAirHockeyPuck)
                 {
                     if (!HockeyHitstopActive)
@@ -412,7 +416,10 @@ namespace BossTemplate
             if (arena.Finished) yield break;
 
             Intent = "수평 쓸기";
-            yield return MoveFist(fist, new Vector2(endX, lockedY), 30, 26, BossPattern.fist_sweep);
+            var sweepEnd = new Vector2(endX, lockedY);
+            yield return MoveFist(fist, sweepEnd, 30, 26, BossPattern.fist_sweep);
+            if (!arena.Finished && arena.EnhancedPhaseTwoEffects)
+                arena.ShowPhaseTwoImpact(sweepEnd, (sweepEnd - sweepStart).normalized, fist.bounds.size.x * .7f, .20f);
             yield return ReturnFist(index);
         }
 
@@ -459,6 +466,8 @@ namespace BossTemplate
                 Vector2 velocity = (destination - origin) / flightTime;
                 velocity.y += ArenaProjectile.MineGravity * flightTime * .5f;
                 arena.SpawnRock(BossPattern.throw_mines, origin, velocity, 15, RockFlight.Mine, healingMine: i == healingMine);
+                if (arena.EnhancedPhaseTwoEffects)
+                    arena.ShowFistRush(origin, velocity.normalized, 1.25f);
                 Vector2 recoil = -velocity.normalized * .65f;
                 for (float elapsed = 0; elapsed < throwInterval && !arena.Finished; elapsed += Time.deltaTime)
                 {
@@ -595,6 +604,8 @@ namespace BossTemplate
             {
                 Intent = stagedThrow ? "돌을 잡고 투척 준비" : "구르는 돌을 잡아 지뢰 투척";
                 arena.PlayEffect(fistImpactSound);
+                if (arena.EnhancedPhaseTwoEffects)
+                    arena.ShowPhaseTwoImpact(rock.transform.position, Vector2.right * direction, 1.3f, .18f);
                 Vector2 grip = (Vector2)rock.transform.position - catchPosition;
                 Vector2 raised = catchPosition + Vector2.up * 3.5f;
                 if (aimedThrow)
@@ -671,7 +682,10 @@ namespace BossTemplate
 
             Intent = "구르는 돌을 잡아 지뢰 투척";
             Vector2 origin = rock.transform.position;
-            rock.ThrowHeldMine((destination - origin).normalized * throwSpeed, 15, destination, fallAfterTarget: aimAtPlayer);
+            Vector2 throwDirection = (destination - origin).normalized;
+            rock.ThrowHeldMine(throwDirection * throwSpeed, 15, destination, fallAfterTarget: aimAtPlayer);
+            if (arena.EnhancedPhaseTwoEffects)
+                arena.ShowPhaseTwoImpact(origin, -throwDirection, 1.5f, .21f);
             SetThrowLine(arena.Flash(origin, Vector2.one, new Color(1, .75f, .42f, .65f), .08f),
                 origin, destination, .16f);
             arena.PlayEffect(fistImpactSound);
@@ -1014,12 +1028,15 @@ namespace BossTemplate
             {
                 var impact = new Vector2(end.x, arena.GroundY);
                 arena.ShowRockLandingDust(impact, fist.bounds.size.x, playSound: false);
-                if (onRelease != null || index % 2 == 0 || pattern == BossPattern.fist_slam_chain)
-                {
-                    arena.ShakeImpact(impact, Vector2.down * .32f);
-                    arena.PlayEffect(fistSlamSound);
-                }
+                bool firstImpact = onRelease != null || index % 2 == 0 || pattern == BossPattern.fist_slam_chain;
+                if (arena.EnhancedPhaseTwoEffects)
+                    arena.ShowPhaseTwoImpact(impact, Vector2.down, fist.bounds.size.x,
+                        firstImpact ? .35f : 0, groundImpact: true);
+                else if (firstImpact) arena.ShakeImpact(impact, Vector2.down * .32f);
+                if (firstImpact) arena.PlayEffect(fistSlamSound);
             }
+            else if (arena.EnhancedPhaseTwoEffects)
+                arena.ShowPhaseTwoImpact(end, direction, fist.bounds.size.x * .65f, .13f);
             yield return ReturnFist(index, .55f * timing);
         }
 
@@ -1079,6 +1096,9 @@ namespace BossTemplate
             PatternParameters parameters = arena.Parameters(pattern);
             Vector2 origin = fist.transform.position;
             float duration = Vector2.Distance(origin, destination) / (speed * parameters.speed);
+            bool enhancedEffects = arena.EnhancedPhaseTwoEffects;
+            if (enhancedEffects)
+                arena.ShowFistRush(origin, (destination - origin).normalized, fist.bounds.size.x);
             damage *= parameters.damage;
             bool madeContact = false;
             float elapsed = 0;
@@ -1103,7 +1123,12 @@ namespace BossTemplate
                     {
                         madeContact = true;
                         if (arena.Player.Health.Hit(damage, .65f, true, pattern))
-                            arena.ShakeImpact(next, (next - previous).normalized * .23f);
+                        {
+                            Vector2 direction = (next - previous).normalized;
+                            if (enhancedEffects)
+                                arena.ShowPhaseTwoImpact(player, direction, 1.4f, .25f);
+                            else arena.ShakeImpact(next, direction * .23f);
+                        }
                     }
                 }
                 fist.transform.position = next;

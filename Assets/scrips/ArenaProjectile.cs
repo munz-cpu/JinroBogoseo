@@ -246,7 +246,10 @@ namespace BossTemplate
             if (flight != RockFlight.Launch && ResolveHit(from, to)) return;
             if (reachedFloor)
             {
-                arena.ShakeImpact(to, Vector2.down * (flight == RockFlight.Skipping ? .055f : .14f));
+                if (flight == RockFlight.Mine && arena.Boss.Phase == 2 && arena.EnhancedPhaseTwoEffects)
+                    arena.ShowPhaseTwoImpact(new Vector2(to.x, arena.GroundY + .25f), Vector2.down,
+                        surface.bounds.size.x, .16f, groundImpact: true);
+                else arena.ShakeImpact(to, Vector2.down * (flight == RockFlight.Skipping ? .055f : .14f));
                 if (flight == RockFlight.Skipping)
                 {
                     velocity.y = 16f;

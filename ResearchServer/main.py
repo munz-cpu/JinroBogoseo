@@ -8,6 +8,7 @@ from typing import Annotated
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import TypeAdapter
 
@@ -49,6 +50,14 @@ def create_app():
                 mirror.thread.join(timeout=50)
 
     app = FastAPI(lifespan=lifespan, docs_url=None, redoc_url=None, openapi_url=None)
+    web_origins = [origin.strip() for origin in os.getenv("RESEARCH_WEB_ORIGINS", "").split(",") if origin.strip()]
+    if web_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=web_origins,
+            allow_methods=["POST"],
+            allow_headers=["Authorization", "Content-Type"],
+        )
 
     @app.exception_handler(RequestValidationError)
     async def invalid_payload(request, error):

@@ -11,7 +11,7 @@ namespace BossTemplate
         private const float DetailsEntranceDuration = .28f;
         private const float DetailsExitDuration = .22f;
         private const string WindowsDownloadUrl =
-            "https://drive.google.com/file/d/1viEs3rjWIQg2MKo2Z8hFBq1Ka6ZV3sKa/view?usp=sharing";
+            "https://drive.google.com/drive/folders/1HS4QMhUZGcyjgzC-OTpEJE-LnRRgNIhN?usp=sharing";
         private const string HowToPlay =
             "이동: WASD\n" +
             "점프: Space, W\n" +

@@ -63,6 +63,7 @@ namespace BossTemplate
         internal StudySession Study { get; private set; }
         public bool ResearchActive => Study != null;
         internal bool Frozen => Study && Study.Frozen;
+        internal bool EnhancedPhaseTwoEffects => !Study || Study.Protocol.UsesDashAssist;
         public bool Finished => (Study && !Study.InCombat) || CombatEnded;
         internal bool CombatEnded => Player.Health.Dead || (Boss.Phase == 2 && Boss.Health.Dead);
         internal bool ResultsReady => Player.Health.Dead || Boss.DefeatAnimationComplete;
@@ -324,6 +325,36 @@ namespace BossTemplate
                 return;
             }
         }
+
+        internal void ShowProtectedDash(Vector2 position, int facing, float duration)
+        {
+            Burst(jumpRingMesh, position, new Vector2(1, 1.4f), new Color(.38f, .9f, 1, .9f),
+                duration, Vector2.right * (facing * 2f), 1.85f);
+        }
+
+        internal void ShowFistRush(Vector2 position, Vector2 direction, float width)
+        {
+            float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg;
+            Burst(sparkMesh, position - direction * width * .35f, new Vector2(width * 1.5f, width * .55f),
+                new Color(1, .64f, .26f, .72f), .19f, direction * 5f, 1.45f, angle);
+        }
+
+        internal void ShowPhaseTwoImpact(Vector2 position, Vector2 direction, float width, float shake, bool groundImpact = false)
+        {
+            if (shake > 0) ShakeImpact(position, direction * shake);
+            var color = new Color(1, .75f, .39f, .85f);
+            Burst(jumpRingMesh, position, groundImpact ? new Vector2(width, width * .22f) : Vector2.one * width,
+                color, .24f, Vector2.zero, 2.3f);
+            float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg;
+            Vector2 tangent = Vector2.Perpendicular(direction);
+            for (int i = -1; i <= 1; i += 2)
+            {
+                Vector2 drift = groundImpact ? new Vector2(i * 3.8f, 2.3f) : direction * 2.5f + tangent * (i * 3f);
+                Burst(sparkMesh, position + tangent * (i * width * .23f), new Vector2(width * .6f, width * .21f),
+                    color, .17f, drift, 1.3f, angle + i * 28);
+            }
+        }
+
         internal void ShowRockBreak(Vector2 position, Vector2 size)
         {
             PlayEffect(rockBreakSound ? rockBreakSound : rockExplosionSound);

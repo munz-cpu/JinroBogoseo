@@ -17,7 +17,8 @@ namespace BossTemplate
         private const string DebriefContactNotice = "기록 제외를 원하면 참가자 ID와 함께 아래 문의처로 연락해 주세요.";
         [Header("서버와 연구 버전")]
         public string apiUrl = "http://127.0.0.1:8000";
-        public string settingsVersion = "combat-v15";
+        internal const string DashAssistVersion = "combat-v16";
+        public string settingsVersion = DashAssistVersion;
         public string consentVersion = "consent-v6";
         [Header("동의와 사후 안내")]
         [TextArea(4, 10)] public string consentNotice =
@@ -71,6 +72,8 @@ namespace BossTemplate
         public PatternRange defaultPattern = new PatternRange();
         [Tooltip("Pattern Id가 일치하는 공격에 개별 배수를 적용합니다. 예: fist_sweep")]
         public PatternRange[] patternOverrides = Array.Empty<PatternRange>();
+
+        internal bool UsesDashAssist => string.Equals(settingsVersion?.Trim(), DashAssistVersion, StringComparison.Ordinal);
 
         internal bool HasConsentDetails =>
             !string.IsNullOrWhiteSpace(retention) && !string.IsNullOrWhiteSpace(contact)

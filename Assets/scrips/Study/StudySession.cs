@@ -87,6 +87,8 @@ namespace BossTemplate
         internal string ParticipantId => state.participant?.participant_id ?? state.withdrawalParticipantId ?? "";
         internal float BossHealthFactor => state?.active?.difficulty.boss_health ?? 1;
         internal float SupportRainChance => AdaptiveDifficulty.SupportRainChance(state?.active?.difficulty.level ?? 0);
+        internal float DashImmunityChance => Protocol.UsesDashAssist && state?.active?.difficulty is DifficultySnapshot difficulty
+            ? AdaptiveDifficulty.DashImmunityChance(difficulty.level) : 0;
         internal static string Now() => DateTime.UtcNow.ToString("O");
 
 #if UNITY_EDITOR

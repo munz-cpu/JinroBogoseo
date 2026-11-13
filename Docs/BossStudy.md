@@ -72,6 +72,12 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 
 운영자는 고지한 보관 기간이 끝나면 SQLite 원본과 분석 시트, 백업 및 내보낸 사본을 정책에 맞춰 정리해야 합니다. 자동 만료 작업은 포함하지 않았습니다. 참가자가 UI에서 제외를 요청하면 서버는 참가·도전·설문 행을 한 트랜잭션에서 제거하고, 재전송에 의한 재등록을 막기 위해 UUID·토큰 해시·요청 시각만 제외 영수증에 보관합니다. 연결이 복구되면 분석 시트에서 해당 행이 사라집니다. 로컬 파일을 분실했을 때는 사후 안내의 연락처로 UUID를 전달하여 담당자가 별도로 처리할 수 있도록 안내합니다.
 
+### WebGL 전송
+
+GitHub Pages에서 실행하는 WebGL 빌드가 별도 API 주소로 전송할 때는 서버의 `.env`에 `RESEARCH_WEB_ORIGINS=https://munz-cpu.github.io`를 설정하고 서버를 다시 시작합니다. 여러 주소는 쉼표로 구분합니다. 각 주소에는 `/Golem/` 같은 경로를 붙이지 않습니다.
+
+API의 `/health`에서 `{"status":"ok"}`가 오는지 확인한 뒤, 웹 브라우저의 네트워크 탭에서 `/participants/offline` 또는 `/participants`의 `OPTIONS`와 `POST`가 모두 성공하는지 확인합니다. 기존 오프라인 기록은 같은 게임 주소를 같은 브라우저 프로필로 열면 전송을 재시도합니다. API에서 받은 기록이 시트에 보이지 않으면 서버의 `Sheets sync pending` 로그와 `/admin/sync`의 두 리비전을 확인합니다.
+
 ## Google Sheets 미러
 
 1. Google Cloud에서 Sheets API를 켜고 서비스 계정을 준비합니다. 새 전용 스프레드시트를 만들고 서비스 계정 이메일에 편집 권한을 줍니다. [Google Workspace 서비스 계정 설정](https://developers.google.com/workspace/guides/create-credentials#service-account)

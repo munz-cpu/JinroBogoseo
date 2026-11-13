@@ -87,5 +87,7 @@ namespace BossTemplate
         }
 
         internal static float SupportRainChance(float level) => Mathf.Lerp(.05f, .55f, level);
+
+        internal static float DashImmunityChance(float level) => Mathf.Lerp(.60f, .10f, level);
     }
 }

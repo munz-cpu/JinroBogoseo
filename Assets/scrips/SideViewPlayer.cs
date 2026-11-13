@@ -32,6 +32,7 @@ namespace BossTemplate
         [SerializeField, InspectorName("일반 탄환 스프라이트")] private Sprite bulletSprite;
         [SerializeField, InspectorName("궁극기 탄환 스프라이트")] private Sprite burstBulletSprite;
         private readonly float[] ready = new float[3];
+        private readonly System.Random dashImmunityRandom = new System.Random();
         private BossArena arena;
         private float vertical;
         private float dashRemaining;
@@ -130,6 +131,12 @@ namespace BossTemplate
             {
                 if (axis != 0) facing = axis > 0 ? 1 : -1;
                 dashRemaining = dashDuration;
+                float immunityChance = arena.Study ? arena.Study.DashImmunityChance : AdaptiveDifficulty.DashImmunityChance(1);
+                if (dashDuration > 0 && immunityChance > 0 && dashImmunityRandom.NextDouble() < immunityChance)
+                {
+                    Health.BeginDashImmunity(dashDuration);
+                    arena.ShowProtectedDash(transform.position, facing, dashDuration);
+                }
                 arena.PlayEffect(dashSound);
             }
             bool dashing = dashRemaining > 0;

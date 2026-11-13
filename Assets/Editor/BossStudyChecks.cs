@@ -565,6 +565,12 @@ internal static class BossStudyChecks
         var history = new List<AttemptRecord>();
         const string now = "2026-01-01T00:00:00Z";
         var profiles = new StudyProtocol { enhancedFourHandPatterns = true };
+        Check(protocol.UsesDashAssist && !new StudyProtocol { settingsVersion = "combat-v15" }.UsesDashAssist,
+            "Dash assistance applies to the new protocol and stays off for saved v15 sessions");
+        Check(Mathf.Approximately(AdaptiveDifficulty.DashImmunityChance(1), .10f)
+            && Mathf.Approximately(AdaptiveDifficulty.DashImmunityChance(.5f), .35f)
+            && Mathf.Approximately(AdaptiveDifficulty.DashImmunityChance(0), .60f),
+            "Dash protection increases linearly from 10% at the hardest level to 60% at the easiest");
         foreach (int target in new[] { 3, 7, 12, 20 })
         {
             var first = AdaptiveDifficulty.Choose(profiles, history, 1, target, now, out _);
@@ -576,6 +582,9 @@ internal static class BossStudyChecks
                 "Difficulty must start hard and stay high before the target window");
             Check(before.level > near.level && near.level > after.level && change.reason == "near_target",
                 "The curve must ease through the target");
+            Check(AdaptiveDifficulty.DashImmunityChance(before.level) < AdaptiveDifficulty.DashImmunityChance(near.level)
+                && AdaptiveDifficulty.DashImmunityChance(near.level) < AdaptiveDifficulty.DashImmunityChance(after.level),
+                "Dash protection increases as adaptive difficulty eases");
             Check(Mathf.Approximately(after.level, .12f) && after.level == later.level,
                 "Difficulty must stay low after the target window");
             Check(first.boss_health > after.boss_health && first.boss_health <= 1.12f && after.boss_health >= .94f,

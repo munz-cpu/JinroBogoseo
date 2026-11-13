@@ -81,6 +81,32 @@ class StudyTest(unittest.TestCase):
         self.assertEqual(self.client.get("/admin/sync", headers={"Authorization": "Bearer " + TOKEN}).status_code, 403)
         self.assertEqual(self.client.get("/admin/sync", headers={"Authorization": "Bearer " + ADMIN_TOKEN}).status_code, 200)
 
+    def test_web_origin_can_upload_offline_records(self):
+        origin = "https://game.example.com"
+        with patch.dict(os.environ, {"RESEARCH_WEB_ORIGINS": origin}), TestClient(create_app()) as client:
+            preflight = {
+                "Origin": origin,
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "authorization,content-type",
+            }
+            for route in ("/participants/offline", "/attempts"):
+                response = client.options(route, headers=preflight)
+                self.assertEqual(response.status_code, 200, response.text)
+                self.assertEqual(response.headers["access-control-allow-origin"], origin)
+
+            headers = {"Origin": origin, "Authorization": f"Bearer {TOKEN}"}
+            response = client.post("/participants/offline", json=self.p, headers=headers)
+            self.assertEqual(response.status_code, 200, response.text)
+            self.assertEqual(response.headers["access-control-allow-origin"], origin)
+
+            response = client.post("/attempts", json=self.attempt(response.json()), headers=headers)
+            self.assertEqual(response.status_code, 204, response.text)
+            self.assertEqual(response.headers["access-control-allow-origin"], origin)
+
+            response = client.options("/participants/offline", headers={**preflight, "Origin": "https://other.example.com"})
+            self.assertEqual(response.status_code, 400)
+            self.assertNotIn("access-control-allow-origin", response.headers)
+
     def test_weighted_assignment_and_reopen(self):
         groups = [Group(group=name, target_attempts=target, weight=weight)
                   for name, target, weight in zip("ABC", (3, 7, 12), (1, 2, 5))]
